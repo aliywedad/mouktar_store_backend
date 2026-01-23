@@ -77,7 +77,7 @@ APPEND_SLASH=False
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "https://lkarne.vercel.app",
+    "https://mouktar.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
