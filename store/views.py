@@ -6,7 +6,6 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from store.permissions import HasTokenPermission
 from .models import  *
-from .serializers import *
 from .constants import *
 from bson import ObjectId
 
