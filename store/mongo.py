@@ -9,7 +9,7 @@ facteurs = db['facteurs']
 clients = db['clients']
 Notes= db['notes']
 debts= db['debts']
- 
+products= db['products']
 def mongo_to_json(doc):
     doc["id"] = str(doc["_id"])
     del doc["_id"]

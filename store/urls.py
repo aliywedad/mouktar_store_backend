@@ -16,6 +16,10 @@ urlpatterns = [
     path("debts/", debtsAPI, name="debts"),
     path("debts/<str:debt_id>/", debtsAPI, name="debts-detail"),
     
+    path("products/", productsAPI, name="products"),
+    path("products/<str:product_id>/", productsAPI, name="products-detail"),
+    
+    
     path("notes/", NotesAPI, name="notes"),
     path("notes/<str:Notes_id>/", NotesAPI, name="notes-detail"),
     path("getDebtsByPhone/", getDebtsByPhone, name="getDebtsByPhone"),

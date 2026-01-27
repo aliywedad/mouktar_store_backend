@@ -35,10 +35,9 @@ def facteursAPI(request, facteur_id=None ):
     try:
         # ---------------- GET ----------------
         if request.method == "GET":
-            tel = request.GET.get("tel")
+            tel = int(request.GET.get("tel",0))
             createdFrom = request.GET.get("createdFrom")
             createdTo = request.GET.get("createdTo")
-            tel = request.GET.get("tel")
             print(tel,createdFrom,createdTo,tel)
             if facteur_id:
                 doc = facteurs.find_one({"_id": ObjectId(facteur_id)})
@@ -72,7 +71,7 @@ def facteursAPI(request, facteur_id=None ):
         # ---------------- POST ----------------
         elif request.method == "POST":
             data = request.data
-            data["tel"] = str(data["tel"])
+            data["tel"] = int(data["tel"])
 
               
             result = facteurs.insert_one(data)
@@ -113,25 +112,120 @@ def facteursAPI(request, facteur_id=None ):
         print(e)
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+ 
+ 
+ 
+ 
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+def productsAPI(request, product_id=None):
+    try:
+        # ---------------- GET ----------------
+        if request.method == "GET":
+            name = request.GET.get("name")
+            category = request.GET.get("category")
+            createdFrom = request.GET.get("createdFrom")
+            createdTo = request.GET.get("createdTo")
 
+            if product_id:
+                doc = products.find_one({"_id": ObjectId(product_id)})
+                if not doc:
+                    return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"data": mongo_to_json(doc)}, status=status.HTTP_200_OK)
+            else:
+                # Build query based on provided parameters
+                query = {}
+
+                if name:
+                    query["name"] = {"$regex": name, "$options": "i"}  # case-insensitive search
+                if category:
+                    query["category"] = category
+
+                # Filter by date range if provided
+                if createdFrom or createdTo:
+                    date_filter = {}
+                    if createdFrom:
+                        date_filter["$gte"] = float(createdFrom)
+                    if createdTo:
+                        date_filter["$lte"] = float(createdTo)
+                    query["timestamp"] = date_filter
+
+                # Get all products with filters, sorted by newest first
+                products_data = [mongo_to_json(d) for d in products.find(query).sort("timestamp", -1)]
+                return Response({"data": products_data}, status=status.HTTP_200_OK)
+
+        # ---------------- POST ----------------
+        elif request.method == "POST":
+            data = request.data
+            # You can add additional processing for fields if needed
+            result = products.insert_one(data)
+            return Response(
+                {"message": "Product created", "id": str(result.inserted_id)},
+                status=status.HTTP_201_CREATED
+            )
+
+        # ---------------- PATCH / UPDATE ----------------
+        elif request.method == "PATCH":
+            if not product_id:
+                return Response({"error": "Product ID is required for update"}, status=status.HTTP_400_BAD_REQUEST)
+            update_data = request.data
+            if not update_data:
+                return Response({"error": "No data provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = products.update_one(
+                {"_id": ObjectId(product_id)},
+                {"$set": update_data}
+            )
+
+            if result.matched_count == 0:
+                return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            updated_doc = products.find_one({"_id": ObjectId(product_id)})
+            return Response({"data": mongo_to_json(updated_doc)}, status=status.HTTP_200_OK)
+
+        # ---------------- DELETE ----------------
+        elif request.method == "DELETE":
+            if not product_id:
+                return Response({"error": "Product ID is required for deletion"}, status=status.HTTP_400_BAD_REQUEST)
+            result = products.delete_one({"_id": ObjectId(product_id)})
+            if result.deleted_count == 0:
+                return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"message": "Product deleted"}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+ 
 @api_view(["POST"])
 def confirmeFacteur(request):
     try:
         facteur_id = request.data.get("id_facteur")
+        
         if not facteur_id:
-            return Response({"error": "id_facteur is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"erro  r": "id_facteur is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 1️⃣ Get the facture
         facteur = facteurs.find_one({"_id": ObjectId(facteur_id)})
+        print(facteur)
         if not facteur:
             return Response({"error": "Facteur not found"}, status=status.HTTP_404_NOT_FOUND)
+        tel=int(facteur.get("tel", 0))
+        if tel == 0:
+             return Response({"err": "this invoice has no phone number !  "}, status=status.HTTP_200_OK)
+            
+        str_payedPrice=facteur.get("payed_price")
+        name=facteur.get("name","no name ")
 
-        remaining_amount = facteur["total"] - facteur.get("payed_price", 0)
-        if remaining_amount <= 0:
+        if str_payedPrice=="":
+            payed_price=0
+        else:
+            payed_price=int(str_payedPrice)
+        total=int(facteur.get("total", 0))
+        remaining_amount = total - payed_price
+        if remaining_amount < 0:
             return Response({"message": "Facture is already fully paid"}, status=status.HTTP_200_OK)
 
         # 2️⃣ Update debt for this customer
-        debt = debts.find_one({"tel": facteur["tel"]})
+        debt = debts.find_one({"tel":tel})
         payment_record = {
             "note": f"تم إضافة مبلغ {remaining_amount} إلى الدين",
             "amount": remaining_amount,
@@ -152,10 +246,10 @@ def confirmeFacteur(request):
         else:
             # Create new debt if none exists
             debts.insert_one({
-                "tel": str(facteur["tel"]),
+                "tel": tel,
                 "debt": remaining_amount,
                 "payments": [payment_record],
-                "name":facteur["name"],
+                "name":name,
                 "timestamp":int(datetime.now().timestamp() * 1000) 
             })
 
@@ -167,6 +261,8 @@ def confirmeFacteur(request):
         return Response({"message": "Facteur confirmed and debt updated successfully"}, status=status.HTTP_200_OK)
 
     except Exception as e:
+        print("=================== error ==============================")
+        print(e)
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     
@@ -176,7 +272,7 @@ def debtsAPI(request, debt_id=None):
     try:
         # ---------------- GET ----------------
         if request.method == "GET":
-            tel = request.GET.get("tel")
+            tel = int(request.GET.get("tel",0))
             createdFrom = request.GET.get("createdFrom")
             createdTo = request.GET.get("createdTo")
 
@@ -221,7 +317,7 @@ def debtsAPI(request, debt_id=None):
         # ---------------- POST ----------------
         elif request.method == "POST":
             data = request.data
-            data['tel']=str(data["tel"])
+            data['tel']=int(data["tel"])
             result = debts.insert_one(data)
             return Response(
                 {
@@ -286,6 +382,8 @@ def debtsAPI(request, debt_id=None):
             )
 
     except Exception as e:
+        print("======================= error ============================")
+        print(e)
         return Response(
             {"error": str(e)},
             status=status.HTTP_400_BAD_REQUEST
@@ -301,7 +399,7 @@ def NotesAPI(request, Notes_id=None):
         if request.method == "GET":
             createdFrom = request.GET.get("createdFrom")
             createdTo = request.GET.get("createdTo")
-            tel = request.GET.get("tel")
+            tel = request.GET.get("tel",0)
             print("Filters:", tel,createdFrom, createdTo)
 
             if Notes_id:
@@ -407,7 +505,7 @@ def NotesAPI(request, Notes_id=None):
 
 @api_view(["POST"])
 def getDebtsByPhone(request):
-    tel = request.data.get("tel")
+    tel = request.data.get("tel",0)
    
     if not tel:
         return Response(
@@ -415,7 +513,6 @@ def getDebtsByPhone(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    print("tel :", tel)
 
     debts_data = [
         mongo_to_json(note)
