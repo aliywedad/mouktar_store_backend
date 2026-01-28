@@ -1,5 +1,7 @@
 import random
 import string
+
+from django.conf import settings
 from .mongo import *
 # Create your views here.
 from rest_framework import viewsets, status
@@ -114,8 +116,27 @@ def facteursAPI(request, facteur_id=None ):
 
  
  
- 
- 
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.core.files.storage import default_storage
+import uuid
+import os
+from django.conf.urls.static import static
+
+
+@csrf_exempt
+def upload_image(request):
+    if request.method == 'POST' and request.FILES.get('image'):
+        image = request.FILES['image']
+
+        ext = os.path.splitext(image.name)[1]
+        safe_name = f"{uuid.uuid4()}{ext}"
+
+        path = default_storage.save(f'uploads/{safe_name}', image)
+        url = request.build_absolute_uri(settings.MEDIA_URL + path)
+
+        return JsonResponse({'url': url})
+
 @api_view(["GET", "POST", "PATCH", "DELETE"])
 def productsAPI(request, product_id=None):
     try:

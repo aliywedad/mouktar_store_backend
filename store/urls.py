@@ -8,7 +8,7 @@ router = DefaultRouter()
  
 
 
-urlpatterns = [
+urlpatterns = [ 
     path("facteurs/", facteursAPI, name="facteurs"),
     # GET single / PATCH / DELETE
     path("facteurs/<str:facteur_id>/", facteursAPI, name="facteur-detail"),
@@ -18,7 +18,7 @@ urlpatterns = [
     
     path("products/", productsAPI, name="products"),
     path("products/<str:product_id>/", productsAPI, name="products-detail"),
-    
+    path('api/upload/', upload_image, name='upload_image'),
     
     path("notes/", NotesAPI, name="notes"),
     path("notes/<str:Notes_id>/", NotesAPI, name="notes-detail"),
