@@ -484,7 +484,7 @@ def confirmeFacteur(request):
         if debt:
             # Update existing debt
             debts.update_one(
-                {"_id": debt["_id"]},
+                {"_id": debt["_id"],"timestamp":int(datetime.now().timestamp() * 1000)},
                 {
                     "$inc": {"debt": remaining_amount},
                 }
