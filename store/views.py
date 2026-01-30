@@ -71,16 +71,53 @@ def facteursAPI(request, facteur_id=None ):
                 return Response({"data": Notesions_data}, status=status.HTTP_200_OK)
 
         # ---------------- POST ----------------
+
+            
+            
+            
+                    
+        # ---------------- POST ----------------
         elif request.method == "POST":
             data = request.data
-            data["tel"] = int(data["tel"])
 
-              
+            # Validate required fields
+            name = data.get("name", "").strip()
+            tel = data.get("tel", "")
+
+            if not name:
+                return Response(
+                    {"error": "اسم العميل مطلوب"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not tel:
+                return Response(
+                    {"error": "رقم الهاتف مطلوب"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                data["tel"] = int(tel)
+            except ValueError:
+                return Response(
+                    {"error": "رقم الهاتف يجب أن يكون عدداً صحيحاً"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Optional: Check tel length
+            if len(str(data["tel"])) < 8:
+                return Response(
+                    {"error": "رقم الهاتف يجب أن يكون 8 أرقام على الأقل"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Insert the facteur
             result = facteurs.insert_one(data)
             return Response(
-                {"message": "Facteur created", "id": str(result.inserted_id)},
+                {"message": "تم إنشاء الفاتورة بنجاح", "id": str(result.inserted_id)},
                 status=status.HTTP_201_CREATED
             )
+
 
         # ---------------- PATCH / UPDATE ----------------
         elif request.method == "PATCH":
@@ -525,10 +562,25 @@ def debtsAPI(request, debt_id=None):
                 status=status.HTTP_200_OK
             )
 
-        # ---------------- POST ----------------
         elif request.method == "POST":
             data = request.data
-            data['tel']=int(data["tel"])
+            try:
+                data['tel'] = int(data["tel"])
+            except ValueError:
+                return Response(
+                {"message": "رقم الهاتف يجب أن يكون عددًا صحيحًا صالحًا"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Check if this tel already exists
+            existing_debt = debts.find_one({"tel": data['tel']})
+            if existing_debt:
+                return Response(
+            {"message": "يوجد بالفعل دين لهذا الرقم"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # If not exists, create new debt
             result = debts.insert_one(data)
             return Response(
                 {
@@ -538,7 +590,9 @@ def debtsAPI(request, debt_id=None):
                 status=status.HTTP_201_CREATED
             )
 
-        # ---------------- PATCH ----------------
+                # ---------------- PATCH ----------------
+            
+            
         elif request.method == "PATCH":
             if not debt_id:
                 return Response(
