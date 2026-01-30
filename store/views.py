@@ -354,10 +354,10 @@ def addNewPayment(request):
             # 2️⃣ Update the debt
             debts.update_one(
                 {"_id": debt["_id"]},
-                {"$set": {"debt": new_debt},
+                {"$set": {"debt": new_debt,"timestamp": int(datetime.now().timestamp() * 1000)},
                 })
             
-            # 3️⃣ Add payment record
+
             payment_record = {
                 "note": f"تم دفع مبلغ {amount}   ",
                 "amount": int(amount),
@@ -467,6 +467,7 @@ def confirmeFacteur(request):
             {"_id": ObjectId(facteur_id)},
             {"$set": {"send": True}}
         )
+        
 
         return Response({"message": "Facteur confirmed and debt updated successfully"}, status=status.HTTP_200_OK)
 
