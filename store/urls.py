@@ -23,6 +23,9 @@ urlpatterns = [
     path("payments/", paymentsAPI, name="payments"),
     path("payments/<str:payme_id>/", paymentsAPI, name="payments-detail"),
     path('api/upload/', upload_image, name='upload_image'),
+    path('download_image/', download_image, name='download_image'),
+    
+    
     
     path("notes/", NotesAPI, name="notes"),
     path("notes/<str:Notes_id>/", NotesAPI, name="notes-detail"),

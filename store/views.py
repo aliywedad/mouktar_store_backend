@@ -765,8 +765,23 @@ def NotesAPI(request, Notes_id=None):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+from django.http import HttpResponse
 
+@api_view(["GET"])
 
+def download_image(request):
+    url = request.GET.get('url')
+    if not url:
+        return HttpResponse("No URL provided", status=400)
+
+    resp = requests.get(url)
+    if resp.status_code != 200:
+        return HttpResponse("Failed to fetch image", status=400)
+
+    filename = url.split('/')[-1]
+    response = HttpResponse(resp.content, content_type='image/jpeg')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 @api_view(["POST"])
 def getDebtsByPhone(request):
