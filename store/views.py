@@ -26,7 +26,7 @@ from django.utils.timezone import now
 from django.db.models import Sum, Count
 from rest_framework.decorators import api_view ,permission_classes
 import hashlib
-from datetime import timedelta
+from datetime import time, timedelta
 import logging
 import traceback
 from django.utils.deprecation import MiddlewareMixin
@@ -137,6 +137,11 @@ def upload_image(request):
 
         return JsonResponse({'url': url})
 
+
+
+# 
+
+
 @api_view(["GET", "POST", "PATCH", "DELETE"])
 def productsAPI(request, product_id=None):
     try:
@@ -216,6 +221,187 @@ def productsAPI(request, product_id=None):
         print(e)
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
  
+ 
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+def paymentsAPI(request, payme_id=None):
+    try:
+        # ---------------- GET ----------------
+        if request.method == "GET":
+            tel = request.GET.get("tel")
+            debtID = request.GET.get("debtId")
+            # # if tel is not provided stop 
+            # if not tel:
+            #     return Response(
+            #         {"error": "Phone number (tel) is required"},
+            #         status=status.HTTP_400_BAD_REQUEST
+            #     )
+            createdFrom = request.GET.get("createdFrom")
+            createdTo = request.GET.get("createdTo")
+            print("debt id is : ",debtID)
+            
+
+            if payme_id:
+                doc = payments.find_one({"_id": ObjectId(payme_id)})
+                if not doc:
+                    return Response(
+                        {"error": "Payment not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                return Response(
+                    {"data": mongo_to_json(doc)},
+                    status=status.HTTP_200_OK
+                )
+            else:
+                query = {}
+
+               
+                if debtID:
+                    query["debt"] = { "$eq": debtID }
+
+
+
+                # Date range filter
+                if createdFrom or createdTo:
+                    date_filter = {}
+                    if createdFrom:
+                        date_filter["$gte"] = float(createdFrom)
+                    if createdTo:
+                        date_filter["$lte"] = float(createdTo)
+                    query["timestamp"] = date_filter
+
+                payments_data = [
+                    mongo_to_json2(d)
+                    for d in payments.find(query).sort("timestamp", -1) 
+                ]
+                # print("payments_data:",payments_data)
+
+                return Response(
+                    {"data":payments_data},
+                    status=status.HTTP_200_OK
+                )
+ 
+        # ---------------- DELETE ----------------
+        elif request.method == "DELETE":
+            if not payme_id:
+                return Response(
+                    {"error": "Payment ID is required for deletion"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            result = payments.delete_one({"_id": ObjectId(payme_id)})
+
+            if result.deleted_count == 0:
+                return Response(
+                    {"error": "Payment not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            return Response(
+                {"message": "Payment deleted"},
+                status=status.HTTP_200_OK
+            )
+
+    except Exception as e:
+        print(e)
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(["POST"])
+def checkPhoneNumberExistence(request):
+    tel = int(request.data.get("tel"))
+
+    if not tel:
+        return Response(
+            {"error": "Phone number is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    exists = facteurs.find_one({"tel": tel}) is not None
+
+    return Response(
+        {
+            "tel": tel,
+            "exists": exists
+        },
+        status=status.HTTP_200_OK
+    )
+
+@api_view(["POST"])
+def addNewPayment(request):
+    try:
+        tel=int(request.data.get("tel",0))
+        amount=int(request.data.get("amount",0))
+        type=request.data.get("type")
+        debtId=request.data.get("debtId","")
+        wallet=request.data.get("wallet","")
+        print( tel,amount,type,wallet)
+        if not tel:
+            print("tel is required")
+            return Response({"error": "tel is required"}, status=status.HTTP_400_BAD_REQUEST)
+        debt = debts.find_one({"_id":ObjectId(debtId)}) if debtId!="" else debts.find_one({"tel":tel})
+        if not debt:
+            print("Debt not found for this tel")
+            return Response({"error": "Debt not found for this tel"}, status=status.HTTP_404_NOT_FOUND)
+        if type=="payment":
+            if debt["debt"]<int(amount):
+                print(f"Payment amount exceeds current debt: {debt['debt']} < {amount}")
+                return Response({"error": "Payment amount exceeds current debt"}, status=status.HTTP_400_BAD_REQUEST)
+            # 1️⃣ Get the current debt
+            new_debt = debt["debt"] - int(amount)
+            # 2️⃣ Update the debt
+            debts.update_one(
+                {"_id": debt["_id"]},
+                {"$set": {"debt": new_debt},
+                })
+            
+            # 3️⃣ Add payment record
+            payment_record = {
+                "note": f"تم دفع مبلغ {amount}   ",
+                "amount": int(amount),
+                "wallet": wallet,
+                "facteur": "",
+                "tel":tel,
+                "debt":str(debt["_id"]),
+                "type":"payment",
+                "timestamp": int(datetime.now().timestamp() * 1000) 
+            }
+            payments.insert_one(payment_record)
+            return Response({"err": "this invoice has no phone number !  "}, status=status.HTTP_200_OK)
+
+        elif type=="debt":
+            # 1️⃣ Get the current debt
+            new_debt = debt["debt"] + int(amount)
+            # 2️⃣ Update the debt
+            debts.update_one(
+                {"_id": debt["_id"]},
+                {"$set": {"debt": new_debt},
+                })
+            
+            # 3️⃣ Add debt record
+            payment_record = {
+                "note": f"تم إضافة مبلغ {amount} إلى الدين",
+                "amount": int(amount),
+                "wallet": wallet,
+                "tel":tel,
+                "debt":str(debt["_id"]),
+                "facteur": "",
+                "type":"debt",
+                "timestamp": int(datetime.now().timestamp() * 1000) 
+            }
+            payments.insert_one(payment_record)
+            return Response({"err": "this invoice has no phone number !  "}, status=status.HTTP_200_OK)
+
+        # 1️⃣ Get th
+        
+    except Exception as e:
+        print("=================== error ==============================")
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+ 
 @api_view(["POST"])
 def confirmeFacteur(request):
     try:
@@ -248,12 +434,15 @@ def confirmeFacteur(request):
         # 2️⃣ Update debt for this customer
         debt = debts.find_one({"tel":tel})
         payment_record = {
-            "note": f"تم إضافة مبلغ {remaining_amount} إلى الدين",
-            "amount": remaining_amount,
-            "facteur": facteur_id,
-            "type":"debt",
-            "timestamp": int(datetime.now().timestamp() * 1000) 
-        }
+                "note": f"تم إضافة مبلغ {remaining_amount} إلى الدين",
+                "amount": remaining_amount,
+                "wallet": "",
+                "tel":tel,
+                "debt":str(debt["_id"]),
+                "facteur": facteur_id,
+                "type":"debt",
+                "timestamp": int(datetime.now().timestamp() * 1000) 
+            }
 
         if debt:
             # Update existing debt
@@ -261,18 +450,18 @@ def confirmeFacteur(request):
                 {"_id": debt["_id"]},
                 {
                     "$inc": {"debt": remaining_amount},
-                    "$push": {"payments": {"$each": [payment_record], "$position": 0}}
                 }
             )
+            payments.insert_one(payment_record)
         else:
             # Create new debt if none exists
             debts.insert_one({
                 "tel": tel,
                 "debt": remaining_amount,
-                "payments": [payment_record],
                 "name":name,
                 "timestamp":int(datetime.now().timestamp() * 1000) 
             })
+            payments.insert_one(payment_record)
 
         facteurs.update_one(
             {"_id": ObjectId(facteur_id)},

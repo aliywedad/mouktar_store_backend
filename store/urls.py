@@ -18,6 +18,10 @@ urlpatterns = [
     
     path("products/", productsAPI, name="products"),
     path("products/<str:product_id>/", productsAPI, name="products-detail"),
+    
+    
+    path("payments/", paymentsAPI, name="payments"),
+    path("payments/<str:payme_id>/", paymentsAPI, name="payments-detail"),
     path('api/upload/', upload_image, name='upload_image'),
     
     path("notes/", NotesAPI, name="notes"),
@@ -25,6 +29,10 @@ urlpatterns = [
     path("getDebtsByPhone/", getDebtsByPhone, name="getDebtsByPhone"),
     
     path("confirmeFacteur/", confirmeFacteur, name="confirmeFacteur"),
+    path("addNewPayment/", addNewPayment, name="addNewPayment"),
+    path("checkPhoneNumberExistence/", checkPhoneNumberExistence, name="checkPhoneNumberExistence"),
+    
+    
 
     
     

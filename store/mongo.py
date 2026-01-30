@@ -10,8 +10,17 @@ clients = db['clients']
 Notes= db['notes']
 debts= db['debts']
 products= db['products']
+payments= db['payments']
 def mongo_to_json(doc):
     doc["id"] = str(doc["_id"])
     del doc["_id"]
     return doc
-print(db.list_collection_names())
+
+
+def mongo_to_json2(doc):
+    doc["id"] = str(doc["_id"])
+    if("debt" in doc):
+        doc["debt"] = str(doc["debt"])
+    del doc["_id"]
+    return doc
+# print(db.list_collection_names())
