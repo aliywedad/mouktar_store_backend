@@ -437,81 +437,95 @@ def addNewPayment(request):
         print("=================== error ==============================")
         print(e)
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
+
+
+
  
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from bson import ObjectId
+from datetime import datetime
+
 @api_view(["POST"])
 def confirmeFacteur(request):
     try:
         facteur_id = request.data.get("id_facteur")
         
         if not facteur_id:
-            return Response({"erro  r": "id_facteur is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "رقم الفاتورة مطلوب"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1️⃣ Get the facture
+        # 1️⃣ الحصول على الفاتورة
         facteur = facteurs.find_one({"_id": ObjectId(facteur_id)})
-        print(facteur)
+         
         if not facteur:
-            return Response({"error": "Facteur not found"}, status=status.HTTP_404_NOT_FOUND)
-        tel=int(facteur.get("tel", 0))
+            return Response({"error": "الفاتورة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if facteur.get("send", False):
+            return Response({"error": "تم إرسال هذه الفاتورة مسبقًا"}, status=status.HTTP_400_BAD_REQUEST)
+
+        tel = int(facteur.get("tel", 0))
         if tel == 0:
-             return Response({"err": "this invoice has no phone number !  "}, status=status.HTTP_200_OK)
+            return Response({"error": "هذه الفاتورة لا تحتوي على رقم هاتف"}, status=status.HTTP_400_BAD_REQUEST)
             
-        str_payedPrice=facteur.get("payed_price")
-        name=facteur.get("name","no name ")
+        str_payedPrice = facteur.get("payed_price", 0)
+        name = facteur.get("name", "بدون اسم")
 
-        if str_payedPrice=="":
-            payed_price=0
-        else:
-            payed_price=int(str_payedPrice)
-        total=int(facteur.get("total", 0))
+        payed_price = int(str_payedPrice) if str_payedPrice else 0
+        total = int(facteur.get("total", 0))
         remaining_amount = total - payed_price
-        if remaining_amount < 0:
-            return Response({"message": "Facture is already fully paid"}, status=status.HTTP_200_OK)
 
-        # 2️⃣ Update debt for this customer
-        debt = debts.find_one({"tel":tel})
+        if remaining_amount <= 0:
+            return Response({"message": "تم دفع الفاتورة بالكامل مسبقًا"}, status=status.HTTP_200_OK)
+
+        # 2️⃣ تحديث الدين للعميل
+        debt = debts.find_one({"tel": tel})
+
         payment_record = {
-                "note": f"تم إضافة مبلغ {remaining_amount} إلى الدين",
-                "amount": remaining_amount,
-                "wallet": "",
-                "tel":tel,
-                "debt":str(debt["_id"]),
-                "facteur": facteur_id,
-                "type":"debt",
-                "timestamp": int(datetime.now().timestamp() * 1000) 
-            }
+            "note": f"تم إضافة مبلغ {remaining_amount} إلى الدين",
+            "amount": remaining_amount,
+            "wallet": "",
+            "tel": tel,
+            "facteur": facteur_id,
+            "type": "debt",
+            "timestamp": int(datetime.now().timestamp() * 1000)
+        }
 
         if debt:
-            # Update existing debt
+            # تحديث الدين الحالي
             debts.update_one(
-                {"_id": debt["_id"],"timestamp":int(datetime.now().timestamp() * 1000)},
+                {"_id": debt["_id"]},
                 {
                     "$inc": {"debt": remaining_amount},
+                    "$set": {"timestamp": int(datetime.now().timestamp() * 1000)}
                 }
             )
+            payment_record["debt"] = str(debt["_id"])
             payments.insert_one(payment_record)
         else:
-            # Create new debt if none exists
-            debts.insert_one({
+            # إنشاء دين جديد إذا لم يكن موجود
+            newdebt = debts.insert_one({
                 "tel": tel,
                 "debt": remaining_amount,
-                "name":name,
-                "timestamp":int(datetime.now().timestamp() * 1000) 
+                "name": name,
+                "timestamp": int(datetime.now().timestamp() * 1000)
             })
+            payment_record["debt"] = str(newdebt.inserted_id)
             payments.insert_one(payment_record)
 
+        # تحديث حالة الفاتورة
         facteurs.update_one(
             {"_id": ObjectId(facteur_id)},
             {"$set": {"send": True}}
         )
         
-
-        return Response({"message": "Facteur confirmed and debt updated successfully"}, status=status.HTTP_200_OK)
+        return Response({"message": "تم تأكيد الفاتورة وتحديث الدين بنجاح ✅"}, status=status.HTTP_200_OK)
 
     except Exception as e:
         print("=================== error ==============================")
         print(e)
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": f"حدث خطأ: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
     
     
     
