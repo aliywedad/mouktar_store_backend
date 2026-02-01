@@ -366,78 +366,88 @@ def checkPhoneNumberExistence(request):
         status=status.HTTP_200_OK
     )
 
+
+
 @api_view(["POST"])
 def addNewPayment(request):
     try:
-        tel=int(request.data.get("tel",0))
-        amount=int(request.data.get("amount",0))
-        type=request.data.get("type")
-        debtId=request.data.get("debtId","")
-        wallet=request.data.get("wallet","")
-        print( tel,amount,type,wallet)
+        tel = int(request.data.get("tel", 0))
+        amount = int(request.data.get("amount", 0))
+        type = request.data.get("type")
+        debtId = request.data.get("debtId", "")
+        wallet = request.data.get("wallet", "")
+
         if not tel:
-            print("tel is required")
             return Response({"error": "tel is required"}, status=status.HTTP_400_BAD_REQUEST)
-        debt = debts.find_one({"_id":ObjectId(debtId)}) if debtId!="" else debts.find_one({"tel":tel})
+
+        # Get debt
+        debt = debts.find_one({"_id": ObjectId(debtId)}) if debtId else debts.find_one({"tel": tel})
         if not debt:
-            print("Debt not found for this tel")
             return Response({"error": "Debt not found for this tel"}, status=status.HTTP_404_NOT_FOUND)
-        if type=="payment":
-            if debt["debt"]<int(amount):
-                print(f"Payment amount exceeds current debt: {debt['debt']} < {amount}")
+
+        now_ts = int(datetime.now().timestamp() * 1000)
+        FIVE_MINUTES = 5 * 60 * 1000
+
+        # 🔹 Get the last payment for this phone & type
+        last_payment = payments.find_one(
+            {"tel": tel, "type": type, "wallet": wallet},
+            sort=[("timestamp", -1)]
+        )
+
+        if last_payment:
+            if (last_payment["amount"] == amount) and ((now_ts - last_payment["timestamp"]) < FIVE_MINUTES):
+                return Response(
+                    {"error": f"تم إضافة هذا المبلغ مسبقاً خلال آخر 5 دقائق."},
+                    status=status.HTTP_409_CONFLICT
+                )
+
+        # Proceed with payment/debt
+        if type == "payment":
+            if debt["debt"] < amount:
                 return Response({"error": "Payment amount exceeds current debt"}, status=status.HTTP_400_BAD_REQUEST)
-            # 1️⃣ Get the current debt
-            new_debt = debt["debt"] - int(amount)
-            # 2️⃣ Update the debt
-            debts.update_one(
-                {"_id": debt["_id"]},
-                {"$set": {"debt": new_debt,"timestamp": int(datetime.now().timestamp() * 1000)},
-                })
-            
 
-            payment_record = {
-                "note": f"تم دفع مبلغ {amount}   ",
-                "amount": int(amount),
+            # Update debt
+            new_debt = debt["debt"] - amount
+            debts.update_one({"_id": debt["_id"]}, {"$set": {"debt": new_debt, "timestamp": now_ts}})
+
+            # Insert payment
+            payments.insert_one({
+                "note": f"تم دفع مبلغ {amount}",
+                "amount": amount,
                 "wallet": wallet,
                 "facteur": "",
-                "tel":tel,
-                "debt":str(debt["_id"]),
-                "type":"payment",
-                "timestamp": int(datetime.now().timestamp() * 1000) 
-            }
-            payments.insert_one(payment_record)
-            return Response({"err": "this invoice has no phone number !  "}, status=status.HTTP_200_OK)
+                "tel": tel,
+                "debt": str(debt["_id"]),
+                "type": "payment",
+                "timestamp": now_ts
+            })
 
-        elif type=="debt":
-            # 1️⃣ Get the current debt
-            new_debt = debt["debt"] + int(amount)
-            # 2️⃣ Update the debt
-            debts.update_one(
-                {"_id": debt["_id"]},
-                {"$set": {"debt": new_debt},
-                })
-            
-            # 3️⃣ Add debt record
-            payment_record = {
+        elif type == "debt":
+            # Update debt
+            new_debt = debt["debt"] + amount
+            debts.update_one({"_id": debt["_id"]}, {"$set": {"debt": new_debt, "timestamp": now_ts}})
+
+            # Insert debt record
+            payments.insert_one({
                 "note": f"تم إضافة مبلغ {amount} إلى الدين",
-                "amount": int(amount),
+                "amount": amount,
                 "wallet": wallet,
-                "tel":tel,
-                "debt":str(debt["_id"]),
+                "tel": tel,
+                "debt": str(debt["_id"]),
                 "facteur": "",
-                "type":"debt",
-                "timestamp": int(datetime.now().timestamp() * 1000) 
-            }
-            payments.insert_one(payment_record)
-            return Response({"err": "this invoice has no phone number !  "}, status=status.HTTP_200_OK)
+                "type": "debt",
+                "timestamp": now_ts
+            })
 
-        # 1️⃣ Get th
-        
+        else:
+            return Response({"error": "Invalid type"}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"success": True}, status=status.HTTP_200_OK)
+
     except Exception as e:
         print("=================== error ==============================")
         print(e)
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
 
 
  
@@ -506,7 +516,7 @@ def confirmeFacteur(request):
             # إنشاء دين جديد إذا لم يكن موجود
             newdebt = debts.insert_one({
                 "tel": tel,
-                "debt": remaining_amount,
+                "amount": remaining_amount,
                 "name": name,
                 "timestamp": int(datetime.now().timestamp() * 1000)
             })
@@ -527,7 +537,56 @@ def confirmeFacteur(request):
         return Response({"error": f"حدث خطأ: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
     
-    
+
+@api_view(["DELETE"])
+def deletePayment(request):
+    try:
+        payment_id = request.data.get("payment_id")
+
+        if not payment_id:
+            return Response({"error": "معرّف الدفع مطلوب"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1️⃣ Find the payment
+        payment = payments.find_one({"_id": ObjectId(payment_id)})
+        if not payment:
+            return Response({"error": "الدفع غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+
+        debt_id = payment.get("debt")
+        amount = int(payment.get("amount", 0))
+        type = payment.get("type")
+
+        # 2️⃣ Update debt if it exists
+        if debt_id:
+            debt = debts.find_one({"_id": ObjectId(debt_id)})
+            if debt:
+                new_debt = debt["debt"]
+                
+                if type == "payment":
+                    # Payment decreases debt → deleting it increases debt
+                    new_debt += amount
+                elif type == "debt":
+                    # Debt increases debt → deleting it decreases debt
+                    new_debt -= amount
+
+                # Prevent negative debt
+                if new_debt < 0:
+                    new_debt = 0
+
+                debts.update_one(
+                    {"_id": debt["_id"]},
+                    {"$set": {"debt": new_debt, "timestamp": int(datetime.now().timestamp() * 1000)}}
+                )
+
+        # 3️⃣ Delete the payment
+        payments.delete_one({"_id": ObjectId(payment_id)})
+
+        return Response({"message": "تم حذف الدفع بنجاح ✅"}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("=================== error ==============================")
+        print(e)
+        return Response({"error": f"حدث خطأ: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
     
 @api_view(["GET", "POST", "PATCH", "DELETE"])
 def debtsAPI(request, debt_id=None):

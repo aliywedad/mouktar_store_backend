@@ -142,19 +142,19 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 #     }
 # }
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': '5aled',
-        'USER': 'root',
-        'PASSWORD': 'P@55word',
-        'HOST': 'localhost',
-        'PORT': '3306',
-                'OPTIONS': {
-            'charset': 'utf8mb4',   
-        },
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': '5aled',
+#         'USER': 'root',
+#         'PASSWORD': 'P@55word',
+#         'HOST': 'localhost',
+#         'PORT': '3306',
+#                 'OPTIONS': {
+#             'charset': 'utf8mb4',   
+#         },
+#     }
+# }
 
 
 # DATABASES['default']=dj_database_url.parse('postgresql://store_v6ga_user:JuU2CqVFZlFBlrfXz9KZDPORuEDF7yvo@dpg-d32tt6buibrs73a67v8g-a.oregon-postgres.render.com/store_v6ga')
