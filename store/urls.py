@@ -24,7 +24,7 @@ urlpatterns = [
     path("payments/<str:payme_id>/", paymentsAPI, name="payments-detail"),
     path('api/upload/', upload_image, name='upload_image'),
     path('download_image/', download_image, name='download_image'),
-    path('deletePayment/', deletePayment, name='deletePayment'),
+    path('deletePayment/', deletePayment, name='deletePayment   '),
     
     
     
