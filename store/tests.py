@@ -1,32 +1,67 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
+from pymongo import MongoClient
+from datetime import datetime
 
-mat = 30006
-url = f"https://dec.education.gov.mr/bac-21/{mat}/info"
+from pymongo import MongoClient
+client = MongoClient(
+    "mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.5.10"
+)
 
-options = Options()
-options.add_argument("--headless")  # headless mode
-options.add_argument("--disable-gpu")  # usually needed in headless Linux
-options.add_argument("--no-sandbox")   # needed for Docker
-options.add_argument("--disable-dev-shm-usage")  # avoid limited /dev/shm issues
+db = client.store
+ 
+debts= db['debts']
+payments= db['payments']
 
-driver = webdriver.Chrome(options=options)
+ 
+# Load Excel
+df = pd.read_excel("debts.xlsx")
 
-driver.get(url)
+now_ts = int(datetime.now().timestamp() * 1000)
 
-try:
-    # Wait until the result appears (up to 15 sec)
-    value = WebDriverWait(driver, 15).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "span.result"))
-    )
-    # Example selector for the name; adjust based on real HTML
-    # name = driver.find_element(By.CSS_SELECTOR, "div.student-info span:first-child")
-    
-    print(f"name:  note: {value.text}")
-except:
-    print("Data not found")
+for _, row in df.iterrows():
+    name = str(row["name"]) 
+    tel = int(row["tel"])
+    amount = int(row["amount"])
 
-driver.quit()
+    if not tel or amount <= 0:
+        print(f"⛔ Skipped invalid row: {row}")
+        continue
+
+    # 1️⃣ Find existing debt
+    debt = debts.find_one({"tel": tel})
+
+    if debt:
+        # Update existing debt
+        debts.update_one(
+            {"_id": debt["_id"]},
+            {
+                "$inc": {"debt": amount},
+                "$set": {"timestamp": now_ts}
+            }
+        )
+        debt_id = str(debt["_id"])
+    else:
+        # Create new debt
+        res = debts.insert_one({
+            "name": name,
+            "tel": tel,
+            "debt": amount,
+            "timestamp": now_ts
+        })
+        debt_id = str(res.inserted_id)
+
+    # 2️⃣ Insert payment record
+    payments.insert_one({
+        "note": "add via excel",
+        "amount": amount,
+        "wallet": "excel",
+        "tel": tel,
+        "debt": debt_id,
+        "facteur": "",
+        "type": "debt",
+        "timestamp": now_ts
+    })
+
+    print(f"✅ Imported: {name} | {tel} | {amount}")
+
+print("🎉 Excel import finished successfully")
