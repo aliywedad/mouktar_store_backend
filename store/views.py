@@ -537,6 +537,32 @@ def confirmeFacteur(request):
         return Response({"error": f"حدث خطأ: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
     
+@api_view(["GET"])
+
+def export_json(request):
+    # جلب البيانات من MongoDB
+    data = {
+        "users": [mongo_to_json(doc) for doc in db['users'].find()],
+        "facteurs": [mongo_to_json(doc) for doc in db['facteurs'].find()],
+        # "clients": [mongo_to_json(doc) for doc in db['clients'].find()],
+        "notes": [mongo_to_json(doc) for doc in db['notes'].find()],
+        "debts": [mongo_to_json(doc) for doc in db['debts'].find()],
+        "products": [mongo_to_json(doc) for doc in db['products'].find()],
+        "payments": [mongo_to_json2(doc) for doc in db['payments'].find()],
+    }
+
+    # تحويل dict إلى JSON string
+    json_data = json.dumps(data, ensure_ascii=False, indent=4)
+
+    # اسم الملف
+    filename = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    # Response لتحميل الملف مباشرة
+    response = HttpResponse(json_data, content_type='application/json')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 
 @api_view(["DELETE"])
 def deletePayment(request):

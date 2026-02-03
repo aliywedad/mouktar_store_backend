@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/upload/', upload_image, name='upload_image'),
     path('download_image/', download_image, name='download_image'),
     path('deletePayment/', deletePayment, name='deletePayment   '),
+    path('export_json/', export_json, name='export_json'),
     
     
     
