@@ -516,7 +516,7 @@ def confirmeFacteur(request):
             # إنشاء دين جديد إذا لم يكن موجود
             newdebt = debts.insert_one({
                 "tel": tel,
-                "amount": remaining_amount,
+                "debt": remaining_amount,
                 "name": name,
                 "timestamp": int(datetime.now().timestamp() * 1000)
             })
