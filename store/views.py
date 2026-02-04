@@ -471,8 +471,8 @@ def confirmeFacteur(request):
         if not facteur:
             return Response({"error": "الفاتورة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
         
-        if facteur.get("send", False):
-            return Response({"error": "تم إرسال هذه الفاتورة مسبقًا"}, status=status.HTTP_400_BAD_REQUEST)
+        # if facteur.get("send", False):
+        #     return Response({"error": "تم إرسال هذه الفاتورة مسبقًا"}, status=status.HTTP_400_BAD_REQUEST)
 
         tel = int(facteur.get("tel", 0))
         if tel == 0:
