@@ -16,7 +16,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.exceptions import ObjectDoesNotExist
-
+from .validations import *
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -153,6 +153,103 @@ def facteursAPI(request, facteur_id=None ):
 
  
  
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+def storesDebtAPI(request, storesDebt_id=None ):
+    try:
+        # ---------------- GET ----------------
+        if request.method == "GET":
+            tel = int(request.GET.get("tel",0))
+            createdFrom = request.GET.get("createdFrom")
+            createdTo = request.GET.get("createdTo")
+            print(tel,createdFrom,createdTo,tel)
+            if storesDebt_id:
+                print("storesDebt_id fount ")
+                doc = storesDebt.find_one({"_id": ObjectId(storesDebt_id)})
+                if not doc:
+                    return Response({"error": "Facteur not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"data": mongo_to_json(doc)}, status=status.HTTP_200_OK)
+            else:
+                # Build query based on provided parameters
+                query = {}
+                
+                # Filter by clientId if provided
+                if tel:
+                    query["tel"] = tel
+                
+                # Filter by date range if createdFrom or createdTo are provided
+                # Assuming you have a "createdAt" field storing timestamps
+                if createdFrom or createdTo:
+                    date_filter = {}
+                    if createdFrom:
+                        date_filter["$gte"] = float(createdFrom)  # Convert to float if needed
+                    if createdTo:
+                        date_filter["$lte"] = float(createdTo)    # Convert to float if needed
+                    query["timestamp"] = date_filter
+                
+                # Get all Notesions with filters and order by date (newest first)
+                Notesions_data = [mongo_to_json(d) for d in 
+                                   storesDebt.find(query).sort("timestamp", -1)]
+                
+                return Response({"data": Notesions_data}, status=status.HTTP_200_OK)
+
+        # ---------------- POST ----------------
+
+            
+            
+            
+                    
+        # ---------------- POST ----------------
+        elif request.method == "POST":
+            data=request.data
+            clean, errors = validate_stores_debt_payload(request.data, partial=False)
+            if errors:
+                return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+ 
+            # Insert the facteur
+            result = storesDebt.insert_one(data)
+            return Response(
+                {"message": "تم إنشاء الفاتورة بنجاح", "id": str(result.inserted_id)},
+                status=status.HTTP_201_CREATED
+            )
+
+
+        # ---------------- PATCH / UPDATE ----------------
+        elif request.method == "PATCH":
+            if not storesDebt_id:
+                return Response({"error": "Facteur ID is required for update"}, status=status.HTTP_400_BAD_REQUEST)
+            update_data = request.data
+            clean, errors = validate_stores_debt_payload(request.data, partial=False)
+            if errors:
+                return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+            if not update_data:
+                return Response({"error": "No data provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = storesDebt.update_one(
+                {"_id": ObjectId(storesDebt_id)},
+                {"$set": update_data}
+            )
+
+            if result.matched_count == 0:
+                return Response({"error": "Facteur not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            updated_doc = storesDebt.find_one({"_id": ObjectId(storesDebt_id)})
+            return Response({"data": mongo_to_json(updated_doc)}, status=status.HTTP_200_OK)
+
+        # ---------------- DELETE ----------------
+        elif request.method == "DELETE":
+            if not storesDebt_id:
+                return Response({"error": "Facteur ID is required for deletion"}, status=status.HTTP_400_BAD_REQUEST)
+            result = storesDebt.delete_one({"_id": ObjectId(storesDebt_id)})
+            if result.deleted_count == 0:
+                return Response({"error": "Facteur not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"message": "Facteur deleted"}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+ 
+
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import default_storage
@@ -175,6 +272,33 @@ def upload_image(request):
         return JsonResponse({'url': url})
 
 
+@csrf_exempt
+def upload_facteur_image(request):
+    if request.method == 'POST' and request.FILES.get('image'):
+        image = request.FILES['image']
+        tel = request.POST.get('tel')
+        place=request.POST.get('place')
+
+        if not tel:
+            return JsonResponse({'error': 'tel is required'}, status=400)
+
+        ext = os.path.splitext(image.name)[1]
+        safe_name = f"{uuid.uuid4()}{ext}"
+
+        # Correct folder structure
+        path = default_storage.save(
+            f'uploads/{place}/{tel}/{safe_name}',
+            image
+        )
+
+        url = request.build_absolute_uri(settings.MEDIA_URL + path)
+
+        return JsonResponse({'url': url})
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+ 
 
 # 
 
@@ -450,6 +574,12 @@ def addNewPayment(request):
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+
+
+
+
+ 
  
 from rest_framework.decorators import api_view
 from rest_framework.response import Response

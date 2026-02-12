@@ -1,6 +1,8 @@
 from pymongo import MongoClient
 client = MongoClient(
     "mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.5.10"
+        # "mongodb://admin:admin@127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.5.10"
+
 )
 
 db = client.store
@@ -11,6 +13,7 @@ Notes= db['notes']
 debts= db['debts']
 products= db['products']
 payments= db['payments']
+storesDebt= db['Stores_debt']
 def mongo_to_json(doc):
     doc["id"] = str(doc["_id"])
     del doc["_id"]
