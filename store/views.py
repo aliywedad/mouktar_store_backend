@@ -161,6 +161,7 @@ def storesDebtAPI(request, storesDebt_id=None ):
             tel = int(request.GET.get("tel",0))
             createdFrom = request.GET.get("createdFrom")
             createdTo = request.GET.get("createdTo")
+            debtType=request.GET.get("debtType")
             print(tel,createdFrom,createdTo,tel)
             if storesDebt_id:
                 print("storesDebt_id fount ")
@@ -175,6 +176,19 @@ def storesDebtAPI(request, storesDebt_id=None ):
                 # Filter by clientId if provided
                 if tel:
                     query["tel"] = tel
+                if debtType is not None:
+                    try:
+                        debtType = int(debtType)
+
+                        if debtType == 1:
+                            query["OnUs"] = True
+                        elif debtType == 2:
+                            query["OnUs"] = False
+                    except ValueError:
+                        return Response(
+                            {"error": "Invalid debtType value"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
                 
                 # Filter by date range if createdFrom or createdTo are provided
                 # Assuming you have a "createdAt" field storing timestamps
@@ -683,6 +697,7 @@ def export_json(request):
         "debts": [mongo_to_json(doc) for doc in db['debts'].find()],
         "products": [mongo_to_json(doc) for doc in db['products'].find()],
         "payments": [mongo_to_json2(doc) for doc in db['payments'].find()],
+        "storeDebts": [mongo_to_json(doc) for doc in db['Stores_debt'].find()],
     }
 
     # تحويل dict إلى JSON string
