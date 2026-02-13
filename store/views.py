@@ -162,6 +162,7 @@ def storesDebtAPI(request, storesDebt_id=None ):
             createdFrom = request.GET.get("createdFrom")
             createdTo = request.GET.get("createdTo")
             debtType=request.GET.get("debtType")
+            ordering=request.GET.get("ordering")
             print(tel,createdFrom,createdTo,tel)
             if storesDebt_id:
                 print("storesDebt_id fount ")
@@ -201,8 +202,39 @@ def storesDebtAPI(request, storesDebt_id=None ):
                     query["timestamp"] = date_filter
                 
                 # Get all Notesions with filters and order by date (newest first)
-                Notesions_data = [mongo_to_json(d) for d in 
-                                   storesDebt.find(query).sort("timestamp", -1)]
+
+                sort_fields = []
+
+                if ordering:
+                    # Example: ordering=1 → OnUs True first
+                    # ordering=2 → OnUs False first
+
+                    try:
+                        ordering = int(ordering)
+
+                        if ordering == 1:
+                            sort_fields.append(("OnUs", -1))  # True first
+                        elif ordering == 2:
+                            sort_fields.append(("OnUs", 1))   # False first
+
+                    except ValueError:
+                        pass
+
+
+                # Always sort by newest timestamp
+                sort_fields.append(("timestamp", -1))
+
+
+                # ---------------- Execute Query ----------------
+                Notesions_data = [
+                    mongo_to_json(d)
+                    for d in storesDebt.find(query).sort(sort_fields)
+                ]
+
+                # if ordering:
+                #     oreder by OnUs also 
+                # Notesions_data = [mongo_to_json(d) for d in 
+                #                    storesDebt.find(query).sort("timestamp", -1)]
                 
                 return Response({"data": Notesions_data}, status=status.HTTP_200_OK)
 
