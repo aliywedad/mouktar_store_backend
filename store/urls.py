@@ -19,6 +19,7 @@ urlpatterns = [
     path("debts/<str:debt_id>/", debtsAPI, name="debts-detail"),
     
     path("products/", productsAPI, name="products"),
+    path("api/export_data_to_telegram/", export_data_to_telegram, name="export_data_to_telegram"),
     path("products/<str:product_id>/", productsAPI, name="products-detail"),
     
     path("payments/", paymentsAPI, name="payments"),

@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import *
 from .constants  import *
-
+from .mongo import *
 import requests
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -21,51 +21,62 @@ from rest_framework.response import Response
 from rest_framework import status
 
 TOKEN = "8308670543:AAF0nfOXJs5cO36w9bx4Rp-t7ZL8sSKsmvM"
-CHAT_ID = accountData.get('chatId')  # aliy
+CHAT_ID = "6606270031"  
 getUpdate=url = f"https://api.telegram.org/bot8308670543:AAF0nfOXJs5cO36w9bx4Rp-t7ZL8sSKsmvM/getUpdates"
 
 
 def send_to_telegram(file_path, message="تقرير جديد"):
     """Send a local file to Telegram as a document."""
     url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+
     with open(file_path, "rb") as f:
         response = requests.post(
             url,
             data={"chat_id": CHAT_ID, "caption": message},
             files={"document": f},
         )
+
     return response.status_code, response.text
 
 
-@api_view(["POST"])
-@parser_classes([MultiPartParser, FormParser])
-def send_pdf_to_telegram(request):
+@api_view(["GET"])
+def export_data_to_telegram(request):
     """
-    Endpoint to receive a PDF from the frontend and send it to Telegram.
+    Generate JSON backup file and send it to Telegram.
     """
     try:
-        pdf_file = request.FILES.get("file")
-        message = request.data.get("message", "تقرير العمليات")
+        # 🔹 Collect your data
+        data = {
+            "users": [mongo_to_json(doc) for doc in db['users'].find()],
+            "facteurs": [mongo_to_json(doc) for doc in db['facteurs'].find()],
+            "notes": [mongo_to_json(doc) for doc in db['notes'].find()],
+            "debts": [mongo_to_json(doc) for doc in db['debts'].find()],
+            "products": [mongo_to_json(doc) for doc in db['products'].find()],
+            "payments": [mongo_to_json2(doc) for doc in db['payments'].find()],
+            "storeDebts": [mongo_to_json(doc) for doc in db['Stores_debt'].find()],
+        }
 
-        if not pdf_file:
-            return Response({"error": "لم يتم إرسال أي ملف"}, status=status.HTTP_400_BAD_REQUEST)
+        # 🔹 Create JSON file
+        file_name = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        temp_path = f"/tmp/{file_name}"
 
-        # Save temporarily
-        temp_path = f"/tmp/{pdf_file.name}"
-        with open(temp_path, "wb+") as destination:
-            for chunk in pdf_file.chunks():
-                destination.write(chunk)
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
 
-        code, text = send_to_telegram(temp_path, message)
+        # 🔹 Send to Telegram
+        code, text = send_to_telegram(temp_path, "📦 نسخة احتياطية للنظام")
 
-        # Clean up
+        # 🔹 Remove file
         os.remove(temp_path)
 
-        return Response(
-            {"status": "تم الإرسال إلى تيليجرام", "telegram_response": text},
-            status=status.HTTP_200_OK,
-        )
+        return Response({
+            "status": "Backup sent to Telegram successfully",
+            "telegram_response": text
+        }, status=status.HTTP_200_OK)
 
     except Exception as e:
         traceback.print_exc()
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
