@@ -246,17 +246,29 @@ def storesDebtAPI(request, storesDebt_id=None ):
                     
         # ---------------- POST ----------------
         elif request.method == "POST":
-            data=request.data
-            clean, errors = validate_stores_debt_payload(request.data, partial=False)
-            if errors:
-                return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
- 
-            # Insert the facteur
-            result = storesDebt.insert_one(data)
-            return Response(
-                {"message": "تم إنشاء الفاتورة بنجاح", "id": str(result.inserted_id)},
-                status=status.HTTP_201_CREATED
-            )
+            try:
+                data=request.data
+                data['cash_amount']=int(data.get('cash_amount',0))
+                data['total']=int(data.get('total',0))
+                data['payed_price']=int(data.get('payed_price',0))
+                
+                clean, errors = validate_stores_debt_payload(request.data, partial=False)
+                if errors:
+                    return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+    
+                # Insert the facteur
+                result = storesDebt.insert_one(data)
+                return Response(
+                    {"message": "تم إنشاء الفاتورة بنجاح", "id": str(result.inserted_id)},
+                    status=status.HTTP_201_CREATED
+                )
+            except Exception as e:
+                print(e)
+
+                return Response(
+                    {"message": "تم إنشاء الفاتورة بنجاح" },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
 
         # ---------------- PATCH / UPDATE ----------------

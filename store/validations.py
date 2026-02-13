@@ -67,17 +67,17 @@ def validate_stores_debt_payload(data, partial=False):
                 clean["OnUs"] = onus
 
     # ---------- data (must be array and at least 1 item) ----------
-    if "data" in data or not partial:
-        if "data" not in data:
-            errors["data"] = "يجب إضافة منتج واحد على الأقل."
-        else:
-            items = data.get("data")
-            if not isinstance(items, list):
-                errors["data"] = "data يجب أن تكون قائمة (Array)"
-            elif len(items) == 0:
-                errors["data"] = "يجب إضافة منتج واحد على الأقل."
-            else:
-                clean["data"] = items
+    # if "data" in data or not partial:
+    #     if "data" not in data:
+    #         errors["data"] = "يجب إضافة منتج واحد على الأقل."
+    #     else:
+    #         items = data.get("data")
+    #         if not isinstance(items, list):
+    #             errors["data"] = "data يجب أن تكون قائمة (Array)"
+    #         elif len(items) == 0:
+    #             errors["data"] = "يجب إضافة منتج واحد على الأقل."
+    #         else:
+    #             clean["data"] = items
 
     # ---------- total ----------
     if "total" in data or not partial:
