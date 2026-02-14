@@ -70,8 +70,7 @@ def export_data_to_telegram(request):
         os.remove(temp_path)
 
         return Response({
-            "status": "Backup sent to Telegram successfully",
-            "telegram_response": text
+            "status": "Backup sent to Telegram successfully"
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
