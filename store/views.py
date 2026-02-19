@@ -465,12 +465,9 @@ def stockAPI(request, stock_id=None):
         if request.method == "GET":
             # Filters (same style as your productsAPI)
             name = request.GET.get("name")                 # e.g. item name / stock name
-            sku = request.GET.get("sku")                   # optional
-            category = request.GET.get("category")         # optional
             createdFrom = request.GET.get("createdFrom")   # timestamp (float/int)
             createdTo = request.GET.get("createdTo")       # timestamp (float/int)
-            minQty = request.GET.get("minQty")             # optional numeric
-            maxQty = request.GET.get("maxQty")             # optional numeric
+            # optional numeric
 
             if stock_id:
                 doc = Stock.find_one({"_id": ObjectId(stock_id)})
@@ -480,23 +477,7 @@ def stockAPI(request, stock_id=None):
 
             # Build query
             query = {}
-
-            if name:
-                query["name"] = {"$regex": name, "$options": "i"}  # case-insensitive
-            if sku:
-                query["sku"] = {"$regex": sku, "$options": "i"}    # flexible
-            if category:
-                query["category"] = category
-
-            # Quantity range (expects field like: quantity)
-            if minQty is not None or maxQty is not None:
-                qty_filter = {}
-                if minQty is not None:
-                    qty_filter["$gte"] = float(minQty)
-                if maxQty is not None:
-                    qty_filter["$lte"] = float(maxQty)
-                query["quantity"] = qty_filter
-
+ 
             # Date range on timestamp (same as your code)
             if createdFrom or createdTo:
                 date_filter = {}
@@ -591,6 +572,9 @@ def addStockChangesAPI(request):
         stock_id = data.get("stockId")
         change_qty = data.get("Quantity")
 
+        if type not in ['IN','OUT']:
+            return Response({"error": "the type is required"}, status=status.HTTP_400_BAD_REQUEST)
+
         if not stock_id:
             return Response({"error": "stockId is required"}, status=status.HTTP_400_BAD_REQUEST)
         if change_qty is None:
@@ -605,13 +589,21 @@ def addStockChangesAPI(request):
             return Response({"error": "Quantity must be > 0"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Ensure stock exists
+        # تحقق من رقم الهاتف
+        is_valid_tel, tel_result = validate_tel(data['tel'])
+        if not is_valid_tel:
+            return Response(
+                {"error": tel_result},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         stock_doc = Stock.find_one({"_id": ObjectId(stock_id)})
         if not stock_doc:
             return Response({"error": "Stock item not found"}, status=status.HTTP_404_NOT_FOUND)
 
         current_qty = float(stock_doc.get("Quantity", 0))
 
-        # Decrease quantity (OUT)
+        # Decrease Quantity (OUT)
         if type =="OUT" and current_qty < change_qty:
             return Response(
                 {"error": "Insufficient stock", "available": current_qty},
@@ -627,7 +619,7 @@ def addStockChangesAPI(request):
         # 1) Insert into StockChanges
         ins = StockChanges.insert_one(change_doc)
 
-        # 2) Decrease stock quantity
+        # 2) Decrease stock Quantity
         if type =="OUT":
             Stock.update_one(
                 {"_id": ObjectId(stock_id)},
@@ -643,7 +635,7 @@ def addStockChangesAPI(request):
 
         return Response(
             {
-                "message": "Stock change created and quantity decreased",
+                "message": "Stock change created and Quantity decreased",
                 "changeId": str(ins.inserted_id),
                 "stock": mongo_to_json(updated_stock),
             },
@@ -659,17 +651,9 @@ def addStockChangesAPI(request):
 
 
 
-
-
-
- 
 @api_view(["GET", "POST", "PATCH", "DELETE"])
 def stockChangesAPI(request, change_id=None):
     try:
-
-        # ============================
-        # ----------- GET ------------
-        # ============================
         if request.method == "GET":
 
             stockId = request.GET.get("StockItemId")
@@ -677,20 +661,6 @@ def stockChangesAPI(request, change_id=None):
             createdFrom = request.GET.get("createdFrom")
             createdTo = request.GET.get("createdTo")
 
-            # ---- GET by ID ----
-            if change_id:
-                doc = StockChanges.find_one({"_id": ObjectId(change_id)})
-                if not doc:
-                    return Response(
-                        {"error": "Stock change not found"},
-                        status=status.HTTP_404_NOT_FOUND,
-                    )
-                return Response(
-                    {"data": mongo_to_json(doc)},
-                    status=status.HTTP_200_OK,
-                )
-
-            # ---- GET with filters ----
             query = {}
 
             if stockId:
@@ -706,146 +676,223 @@ def stockChangesAPI(request, change_id=None):
                 if createdTo:
                     date_filter["$lte"] = float(createdTo)
                 query["timestamp"] = date_filter
-            print(query)
+
             data = [
                 mongo_to_json(d)
                 for d in StockChanges.find(query).sort("timestamp", -1)
             ]
 
-            return Response({"data": data}, status=status.HTTP_200_OK)
-
-        # ============================
-        # ----------- POST -----------
-        # ============================
-        elif request.method == "POST":
+            return Response(
+                {"data": data},
+                status=status.HTTP_200_OK
+            )
+        # =================================
+        # ------------ POST ---------------
+        # =================================
+        if request.method == "POST":
 
             data = request.data
             stock_id = data.get("stockId")
             change_qty = data.get("Quantity")
-            change_type = data.get("type", "OUT")  # default OUT
+            change_type = data.get("type", "OUT")
+            tel = int(data.get("tel"))
 
+            # ---------- VALIDATION ----------
             if not stock_id or change_qty is None:
                 return Response(
-                    {"error": "stockId and Quantity are required"},
+                    {"error": "يجب إدخال معرف المخزون والكمية"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            tel_str=str(update_data['tel'])
+            if len(tel_str) != 8:
+                error= "رقم الهاتف يجب أن يكون 8 أرقام فقط"
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # تحقق من رقم الهاتف
+            is_valid_tel, tel_result = validate_tel(tel)
+            if not is_valid_tel:
+                return Response(
+                    {"error": tel_result},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            data["tel"] = tel_result  # تخزينه كـ int
 
             try:
                 change_qty = float(change_qty)
             except:
                 return Response(
-                    {"error": "Quantity must be numeric"},
+                    {"error": "الكمية يجب أن تكون رقمًا"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             stock_doc = Stock.find_one({"_id": ObjectId(stock_id)})
             if not stock_doc:
                 return Response(
-                    {"error": "Stock item not found"},
+                    {"error": "الصنف غير موجود"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            current_qty = float(stock_doc.get("quantity", 0))
+            current_qty = float(stock_doc.get("Quantity", 0))
 
-            # ---------- HANDLE STOCK UPDATE ----------
+            # ---------- تعديل المخزون ----------
             if change_type == "OUT":
                 if current_qty < change_qty:
                     return Response(
-                        {"error": "Insufficient stock"},
+                        {"error": "الكمية غير كافية في المخزون"},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
                 Stock.update_one(
                     {"_id": ObjectId(stock_id)},
-                    {"$inc": {"quantity": -change_qty}},
+                    {"$inc": {"Quantity": -change_qty}},
                 )
 
             elif change_type == "IN":
                 Stock.update_one(
                     {"_id": ObjectId(stock_id)},
-                    {"$inc": {"quantity": change_qty}},
+                    {"$inc": {"Quantity": change_qty}},
                 )
 
-            # ---------- INSERT CHANGE ----------
-            data["timestamp"] = data.get("timestamp", time.time())
+            data["timestamp"] = time.time()
             result = StockChanges.insert_one(data)
 
-            updated_stock = Stock.find_one({"_id": ObjectId(stock_id)})
-
             return Response(
-                {
-                    "message": "Stock change created",
-                    "changeId": str(result.inserted_id),
-                    "updatedStock": mongo_to_json(updated_stock),
-                },
+                {"message": "تم إنشاء عملية المخزون بنجاح"},
                 status=status.HTTP_201_CREATED,
             )
 
-        # ============================
-        # ----------- PATCH ----------
-        # ============================
+        # =================================
+        # ------------ PATCH --------------
+        # =================================
         elif request.method == "PATCH":
 
             if not change_id:
                 return Response(
-                    {"error": "change_id is required"},
+                    {"error": "معرف العملية مطلوب"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             update_data = request.data
-            if not update_data:
+
+            # تحقق من الهاتف إذا تم إرساله
+            if "tel" in update_data:
+                tel_str=str(update_data['tel'])
+                if len(tel_str) != 8:
+                    error= "رقم الهاتف يجب أن يكون 8 أرقام فقط"
+                    return Response(
+                        {"error": error},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                is_valid_tel, tel_result = validate_tel(update_data["tel"])
+                if not is_valid_tel:
+                    return Response(
+                        {"error": tel_result},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                update_data["tel"] = tel_result
+
+            old_doc = StockChanges.find_one({"_id": ObjectId(change_id)})
+            if not old_doc:
                 return Response(
-                    {"error": "No data provided"},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    {"error": "عملية المخزون غير موجودة"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
 
-            result = StockChanges.update_one(
+            # استرجاع الكمية القديمة
+            old_qty = float(old_doc.get("Quantity", 0))
+            old_type = old_doc.get("type")
+            stock_id = old_doc.get("stockId")
+
+            # إعادة الكمية القديمة للمخزون أولاً
+            if old_type == "OUT":
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"Quantity": old_qty}},
+                )
+            else:
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"Quantity": -old_qty}},
+                )
+
+            # تطبيق التعديل الجديد إن وجد Quantity
+            new_qty = float(update_data.get("Quantity", old_qty))
+            new_type = update_data.get("type", old_type)
+
+            if new_type == "OUT":
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"Quantity": -new_qty}},
+                )
+            else:
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"Quantity": new_qty}},
+                )
+
+            StockChanges.update_one(
                 {"_id": ObjectId(change_id)},
                 {"$set": update_data},
             )
 
-            if result.matched_count == 0:
-                return Response(
-                    {"error": "Stock change not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            updated_doc = StockChanges.find_one({"_id": ObjectId(change_id)})
-
             return Response(
-                {"data": mongo_to_json(updated_doc)},
+                {"message": "تم تعديل العملية بنجاح"},
                 status=status.HTTP_200_OK,
             )
 
-        # ============================
-        # ----------- DELETE ---------
-        # ============================
+        # =================================
+        # ------------ DELETE -------------
+        # =================================
         elif request.method == "DELETE":
 
             if not change_id:
                 return Response(
-                    {"error": "change_id is required"},
+                    {"error": "معرف العملية مطلوب"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            result = StockChanges.delete_one({"_id": ObjectId(change_id)})
-
-            if result.deleted_count == 0:
+            doc = StockChanges.find_one({"_id": ObjectId(change_id)})
+            if not doc:
                 return Response(
-                    {"error": "Stock change not found"},
+                    {"error": "عملية المخزون غير موجودة"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+            qty = float(doc.get("Quantity", 0))
+            stock_id = doc.get("stockId")
+            change_type = doc.get("type")
+            print("=============================================================================================")
+            print(ObjectId(stock_id))
+            print(doc)
+
+            # إعادة الكمية عند الحذف
+            if change_type == "OUT":
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"Quantity": qty}},
+                )
+            else:
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"Quantity": -qty}},
+                )
+
+            StockChanges.delete_one({"_id": ObjectId(change_id)})
+
             return Response(
-                {"message": "Stock change deleted"},
+                {"message": "تم حذف العملية وإعادة تحديث المخزون بنجاح"},
                 status=status.HTTP_200_OK,
             )
 
     except Exception as e:
-        print(e)
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-
+        return Response(
+            {"error": "حدث خطأ غير متوقع", "details": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 

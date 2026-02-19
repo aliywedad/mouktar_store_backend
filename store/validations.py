@@ -132,3 +132,23 @@ def validate_stores_debt_payload(data, partial=False):
             errors["payed_price"] = "تم دفع أكثر من المبلغ الكلي!"
 
     return clean, errors
+
+
+
+
+
+
+
+def validate_tel(tel):
+    if not tel:
+        return False, "رقم الهاتف مطلوب"
+
+    tel_str = str(tel)
+
+    if not tel_str.isdigit():
+        return False, "رقم الهاتف يجب أن يحتوي على أرقام فقط"
+
+    if len(tel_str) != 8:
+        return False, "رقم الهاتف يجب أن يكون 8 أرقام فقط"
+
+    return True, int(tel_str)
