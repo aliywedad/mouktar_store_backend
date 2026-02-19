@@ -82,7 +82,7 @@ def facteursAPI(request, facteur_id=None ):
 
             # Validate required fields
             name = data.get("name", "").strip()
-            tel = data.get("tel", "")
+            tel = int(data.get("tel", 0))
 
             if not name:
                 return Response(
@@ -121,9 +121,12 @@ def facteursAPI(request, facteur_id=None ):
 
         # ---------------- PATCH / UPDATE ----------------
         elif request.method == "PATCH":
+
             if not facteur_id:
                 return Response({"error": "Facteur ID is required for update"}, status=status.HTTP_400_BAD_REQUEST)
             update_data = request.data
+            update_data['tel'] = int(update_data['tel'] )
+
             if not update_data:
                 return Response({"error": "No data provided"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -251,6 +254,8 @@ def storesDebtAPI(request, storesDebt_id=None ):
                 data['cash_amount']=int(data.get('cash_amount',0))
                 data['total']=int(data.get('total',0))
                 data['payed_price']=int(data.get('payed_price',0))
+                data['tel']=int(data.get('tel',0))
+                
                 
                 clean, errors = validate_stores_debt_payload(request.data, partial=False)
                 if errors:
@@ -276,6 +281,8 @@ def storesDebtAPI(request, storesDebt_id=None ):
             if not storesDebt_id:
                 return Response({"error": "Facteur ID is required for update"}, status=status.HTTP_400_BAD_REQUEST)
             update_data = request.data
+            update_data['tel']=int(update_data.get('tel',0))
+
             clean, errors = validate_stores_debt_payload(request.data, partial=False)
             if errors:
                 return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -441,6 +448,412 @@ def productsAPI(request, product_id=None):
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
  
  
+
+
+
+
+from bson import ObjectId
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+ 
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+def stockAPI(request, stock_id=None):
+    try:
+        # ---------------- GET ----------------
+        if request.method == "GET":
+            # Filters (same style as your productsAPI)
+            name = request.GET.get("name")                 # e.g. item name / stock name
+            sku = request.GET.get("sku")                   # optional
+            category = request.GET.get("category")         # optional
+            createdFrom = request.GET.get("createdFrom")   # timestamp (float/int)
+            createdTo = request.GET.get("createdTo")       # timestamp (float/int)
+            minQty = request.GET.get("minQty")             # optional numeric
+            maxQty = request.GET.get("maxQty")             # optional numeric
+
+            if stock_id:
+                doc = Stock.find_one({"_id": ObjectId(stock_id)})
+                if not doc:
+                    return Response({"error": "Stock item not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"data": mongo_to_json(doc)}, status=status.HTTP_200_OK)
+
+            # Build query
+            query = {}
+
+            if name:
+                query["name"] = {"$regex": name, "$options": "i"}  # case-insensitive
+            if sku:
+                query["sku"] = {"$regex": sku, "$options": "i"}    # flexible
+            if category:
+                query["category"] = category
+
+            # Quantity range (expects field like: quantity)
+            if minQty is not None or maxQty is not None:
+                qty_filter = {}
+                if minQty is not None:
+                    qty_filter["$gte"] = float(minQty)
+                if maxQty is not None:
+                    qty_filter["$lte"] = float(maxQty)
+                query["quantity"] = qty_filter
+
+            # Date range on timestamp (same as your code)
+            if createdFrom or createdTo:
+                date_filter = {}
+                if createdFrom:
+                    date_filter["$gte"] = float(createdFrom)
+                if createdTo:
+                    date_filter["$lte"] = float(createdTo)
+                query["timestamp"] = date_filter
+
+            # Newest first
+            data = [mongo_to_json(d) for d in Stock.find(query).sort("timestamp", -1)]
+            return Response({"data": data}, status=status.HTTP_200_OK)
+
+        # ---------------- POST ----------------
+        elif request.method == "POST":
+            data = request.data
+
+            # Optional: auto timestamp if not provided
+            # import time
+            # data.setdefault("timestamp", time.time())
+
+            result = Stock.insert_one(data)
+            return Response(
+                {"message": "Stock item created", "id": str(result.inserted_id)},
+                status=status.HTTP_201_CREATED,
+            )
+
+        # ---------------- PATCH / UPDATE ----------------
+        elif request.method == "PATCH":
+            if not stock_id:
+                return Response({"error": "Stock ID is required for update"}, status=status.HTTP_400_BAD_REQUEST)
+
+            update_data = request.data
+            if not update_data:
+                return Response({"error": "No data provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = Stock.update_one(
+                {"_id": ObjectId(stock_id)},
+                {"$set": update_data},
+            )
+
+            if result.matched_count == 0:
+                return Response({"error": "Stock item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            updated_doc = Stock.find_one({"_id": ObjectId(stock_id)})
+            return Response({"data": mongo_to_json(updated_doc)}, status=status.HTTP_200_OK)
+
+        # ---------------- DELETE ----------------
+        elif request.method == "DELETE":
+            if not stock_id:
+                return Response({"error": "Stock ID is required for deletion"}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = Stock.delete_one({"_id": ObjectId(stock_id)})
+            if result.deleted_count == 0:
+                return Response({"error": "Stock item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            return Response({"message": "Stock item deleted"}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
+
+
+
+@api_view(["POST"])
+def addStockChangesAPI(request):
+    """
+    Body example:
+    {
+      "stockId": "65f....",          # REQUIRED (Stock _id)
+      "Quantity": 3,                # REQUIRED (positive number)
+      "type": "OUT",                 # optional ("OUT" / "IN") - here we treat as OUT (decrease)
+      "note": "Sale invoice #12",    # optional
+      "timestamp": 1700000000.0      # optional
+    }
+    """
+    print("calling the api ================= ")
+    print(request.data)
+
+    try:
+        data = request.data or {}
+        data['tel'] = int(data.get("tel"))
+        data['Quantity'] = int(data.get("Quantity"))
+        data["timestamp"] = int(datetime.now().timestamp() * 1000)
+        type = data.get("type")
+        stock_id = data.get("stockId")
+        change_qty = data.get("Quantity")
+
+        if not stock_id:
+            return Response({"error": "stockId is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if change_qty is None:
+            return Response({"error": "Quantity is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            change_qty = float(change_qty)
+        except Exception:
+            return Response({"error": "Quantity must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if change_qty <= 0:
+            return Response({"error": "Quantity must be > 0"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ensure stock exists
+        stock_doc = Stock.find_one({"_id": ObjectId(stock_id)})
+        if not stock_doc:
+            return Response({"error": "Stock item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        current_qty = float(stock_doc.get("Quantity", 0))
+
+        # Decrease quantity (OUT)
+        if type =="OUT" and current_qty < change_qty:
+            return Response(
+                {"error": "Insufficient stock", "available": current_qty},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare change doc
+        change_doc = dict(data)
+        change_doc["stockId"] = str(stock_id)  # keep it as string for front
+        change_doc["Quantity"] = change_qty
+       
+
+        # 1) Insert into StockChanges
+        ins = StockChanges.insert_one(change_doc)
+
+        # 2) Decrease stock quantity
+        if type =="OUT":
+            Stock.update_one(
+                {"_id": ObjectId(stock_id)},
+                {"$inc": {"Quantity": -change_qty}}
+            )
+        else:
+            Stock.update_one(
+                {"_id": ObjectId(stock_id)},
+                {"$inc": {"Quantity": change_qty}}
+            )
+
+        updated_stock = Stock.find_one({"_id": ObjectId(stock_id)})
+
+        return Response(
+            {
+                "message": "Stock change created and quantity decreased",
+                "changeId": str(ins.inserted_id),
+                "stock": mongo_to_json(updated_stock),
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+
+
+
+
+
+
+ 
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+def stockChangesAPI(request, change_id=None):
+    try:
+
+        # ============================
+        # ----------- GET ------------
+        # ============================
+        if request.method == "GET":
+
+            stockId = request.GET.get("StockItemId")
+            type_filter = request.GET.get("type")
+            createdFrom = request.GET.get("createdFrom")
+            createdTo = request.GET.get("createdTo")
+
+            # ---- GET by ID ----
+            if change_id:
+                doc = StockChanges.find_one({"_id": ObjectId(change_id)})
+                if not doc:
+                    return Response(
+                        {"error": "Stock change not found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                return Response(
+                    {"data": mongo_to_json(doc)},
+                    status=status.HTTP_200_OK,
+                )
+
+            # ---- GET with filters ----
+            query = {}
+
+            if stockId:
+                query["stockId"] = stockId
+
+            if type_filter:
+                query["type"] = type_filter
+
+            if createdFrom or createdTo:
+                date_filter = {}
+                if createdFrom:
+                    date_filter["$gte"] = float(createdFrom)
+                if createdTo:
+                    date_filter["$lte"] = float(createdTo)
+                query["timestamp"] = date_filter
+            print(query)
+            data = [
+                mongo_to_json(d)
+                for d in StockChanges.find(query).sort("timestamp", -1)
+            ]
+
+            return Response({"data": data}, status=status.HTTP_200_OK)
+
+        # ============================
+        # ----------- POST -----------
+        # ============================
+        elif request.method == "POST":
+
+            data = request.data
+            stock_id = data.get("stockId")
+            change_qty = data.get("Quantity")
+            change_type = data.get("type", "OUT")  # default OUT
+
+            if not stock_id or change_qty is None:
+                return Response(
+                    {"error": "stockId and Quantity are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                change_qty = float(change_qty)
+            except:
+                return Response(
+                    {"error": "Quantity must be numeric"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            stock_doc = Stock.find_one({"_id": ObjectId(stock_id)})
+            if not stock_doc:
+                return Response(
+                    {"error": "Stock item not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            current_qty = float(stock_doc.get("quantity", 0))
+
+            # ---------- HANDLE STOCK UPDATE ----------
+            if change_type == "OUT":
+                if current_qty < change_qty:
+                    return Response(
+                        {"error": "Insufficient stock"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"quantity": -change_qty}},
+                )
+
+            elif change_type == "IN":
+                Stock.update_one(
+                    {"_id": ObjectId(stock_id)},
+                    {"$inc": {"quantity": change_qty}},
+                )
+
+            # ---------- INSERT CHANGE ----------
+            data["timestamp"] = data.get("timestamp", time.time())
+            result = StockChanges.insert_one(data)
+
+            updated_stock = Stock.find_one({"_id": ObjectId(stock_id)})
+
+            return Response(
+                {
+                    "message": "Stock change created",
+                    "changeId": str(result.inserted_id),
+                    "updatedStock": mongo_to_json(updated_stock),
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        # ============================
+        # ----------- PATCH ----------
+        # ============================
+        elif request.method == "PATCH":
+
+            if not change_id:
+                return Response(
+                    {"error": "change_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            update_data = request.data
+            if not update_data:
+                return Response(
+                    {"error": "No data provided"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            result = StockChanges.update_one(
+                {"_id": ObjectId(change_id)},
+                {"$set": update_data},
+            )
+
+            if result.matched_count == 0:
+                return Response(
+                    {"error": "Stock change not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            updated_doc = StockChanges.find_one({"_id": ObjectId(change_id)})
+
+            return Response(
+                {"data": mongo_to_json(updated_doc)},
+                status=status.HTTP_200_OK,
+            )
+
+        # ============================
+        # ----------- DELETE ---------
+        # ============================
+        elif request.method == "DELETE":
+
+            if not change_id:
+                return Response(
+                    {"error": "change_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            result = StockChanges.delete_one({"_id": ObjectId(change_id)})
+
+            if result.deleted_count == 0:
+                return Response(
+                    {"error": "Stock change not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            return Response(
+                {"message": "Stock change deleted"},
+                status=status.HTTP_200_OK,
+            )
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
+
+
+
+
 @api_view(["GET", "POST", "PATCH", "DELETE"])
 def paymentsAPI(request, payme_id=None):
     try:
@@ -893,7 +1306,7 @@ def debtsAPI(request, debt_id=None):
                 )
 
             update_data = request.data
-            update_data["tel"] = str(update_data["tel"])
+            update_data["tel"] = int(update_data["tel"])
 
             if not update_data:
                 return Response(

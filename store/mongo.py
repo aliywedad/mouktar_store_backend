@@ -13,6 +13,8 @@ Notes= db['notes']
 debts= db['debts']
 products= db['products']
 payments= db['payments']
+Stock= db['Stock']
+StockChanges=db['StockChanges']
 storesDebt= db['Stores_debt']
 def mongo_to_json(doc):
     doc["id"] = str(doc["_id"])
