@@ -550,22 +550,16 @@ def stockAPI(request, stock_id=None):
 
 @api_view(["POST"])
 def addStockChangesAPI(request):
-    """
-    Body example:
-    {
-      "stockId": "65f....",          # REQUIRED (Stock _id)
-      "Quantity": 3,                # REQUIRED (positive number)
-      "type": "OUT",                 # optional ("OUT" / "IN") - here we treat as OUT (decrease)
-      "note": "Sale invoice #12",    # optional
-      "timestamp": 1700000000.0      # optional
-    }
-    """
+ 
     print("calling the api ================= ")
     print(request.data)
 
     try:
         data = request.data or {}
-        data['tel'] = int(data.get("tel"))
+        if(data['tel']):
+            data['tel'] = int(data.get("tel",0))
+        else:
+            data['tel']=0
         data['Quantity'] = int(data.get("Quantity"))
         data["timestamp"] = int(datetime.now().timestamp() * 1000)
         type = data.get("type")
@@ -591,7 +585,7 @@ def addStockChangesAPI(request):
         # Ensure stock exists
         # تحقق من رقم الهاتف
         is_valid_tel, tel_result = validate_tel(data['tel'])
-        if not is_valid_tel:
+        if not is_valid_tel and type=='OUT':
             return Response(
                 {"error": tel_result},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -660,12 +654,14 @@ def stockChangesAPI(request, change_id=None):
             type_filter = request.GET.get("type")
             createdFrom = request.GET.get("createdFrom")
             createdTo = request.GET.get("createdTo")
+            tel = request.GET.get("phone")
 
             query = {}
 
             if stockId:
                 query["stockId"] = stockId
-
+            if tel:
+                query["tel"] = int(tel)
             if type_filter:
                 query["type"] = type_filter
 
@@ -1082,7 +1078,7 @@ def addNewPayment(request):
             })
 
         else:
-            return Response({"error": "Invalid type"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "يرجى تحديد النوع   "}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"success": True}, status=status.HTTP_200_OK)
 
