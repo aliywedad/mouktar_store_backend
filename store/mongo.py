@@ -16,6 +16,7 @@ payments= db['payments']
 Stock= db['Stock']
 StockChanges=db['StockChanges']
 storesDebt= db['Stores_debt']
+factory= db['factory']
 def mongo_to_json(doc):
     doc["id"] = str(doc["_id"])
     del doc["_id"]

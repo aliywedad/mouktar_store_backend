@@ -22,8 +22,10 @@ urlpatterns = [
     path("stockChangesAPI/", stockChangesAPI, name="stockChangesAPI"),
     path("stockChangesAPI/<str:change_id>/", stockChangesAPI, name="stockChangesAPI-detail"),
     
-
-
+    path("factoryAPI/", factoryAPI, name="factoryAPI"),
+    path("factoryAPI/<str:factory_id>/", factoryAPI, name="factoryAPI-detail"),
+    
+ 
     
     path("stockAPI/", stockAPI, name="stockAPI"),
     path("stockAPI/<str:stock_id>/", stockAPI, name="stockAPI-detail"),

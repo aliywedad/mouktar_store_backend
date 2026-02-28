@@ -26,11 +26,245 @@ from django.utils.timezone import now
 from django.db.models import Sum, Count
 from rest_framework.decorators import api_view ,permission_classes
 import hashlib
+import json
+import time as _time
 from datetime import time, timedelta
 import logging
 import traceback
 from django.utils.deprecation import MiddlewareMixin
 from rest_framework import status
+
+
+
+
+
+
+
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from bson import ObjectId
+from datetime import datetime
+
+# assume you already have:
+# factory = db["factory"]
+# mongo_to_json(doc) helper
+
+def _debug_log(location, message, data, hypothesis_id=None):
+    try:
+        with open("/home/aliy/projects/private/mouktar/mouktar_store_backend/.cursor/debug-b1a504.log", "a") as f:
+            f.write(json.dumps({"sessionId": "b1a504", "location": location, "message": message, "data": data, "hypothesisId": hypothesis_id, "timestamp": int(_time.time() * 1000)}) + "\n")
+    except Exception:
+        pass
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+def factoryAPI(request, factory_id=None):
+    import time
+
+    try:
+        # ---------------- GET ----------------
+        if request.method == "GET":
+            type_ = request.GET.get("type", "").strip()
+            number = request.GET.get("number")
+            createdFrom = request.GET.get("createdFrom")
+            createdTo = request.GET.get("createdTo")
+
+            # get by id
+            if factory_id:
+                doc = factory.find_one({"_id": ObjectId(factory_id)})
+                if not doc:
+                    return Response({"error": "Factory not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"data": mongo_to_json(doc)}, status=status.HTTP_200_OK)
+
+            # list with filters
+            query = {}
+
+            if type_:
+                query["type"] = type_
+
+            if number is not None and str(number).strip() != "":
+                try:
+                    query["number"] = int(number)
+                except ValueError:
+                    return Response({"error": "number must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # date range filtering on "timestamp"
+            if createdFrom or createdTo:
+                date_filter = {}
+                if createdFrom:
+                    date_filter["$gte"] = float(createdFrom)
+                if createdTo:
+                    date_filter["$lte"] = float(createdTo)
+                query["timestamp"] = date_filter
+
+            data_list = [mongo_to_json(d) for d in factory.find(query).sort("timestamp", -1)]
+            return Response({"data": data_list}, status=status.HTTP_200_OK)
+
+        # ---------------- POST ----------------
+        elif request.method == "POST":
+            data = request.data
+
+            date = data.get("date", "") or ""
+            type_ = str(data.get("type", "")).strip()
+
+            try:
+                number = int(data.get("number", 0))
+            except Exception:
+                return Response({"error": "number must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                amount = float(data.get("amount", 0))
+            except Exception:
+                return Response({"error": "amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                payed_amount = float(data.get("payed_amount", 0))
+            except Exception:
+                return Response({"error": "payed_amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+            wallet = data.get("wallet", "") or ""
+
+            images = data.get("images", [])
+            if images is None:
+                images = []
+
+            # timestamp in milliseconds (same logic we will reuse in PATCH)
+            if date:
+                try:
+                    import datetime
+                    dt = None
+                    try:
+                        dt = datetime.datetime.fromisoformat(date)
+                    except Exception:
+                        try:
+                            dt = datetime.datetime.strptime(date, "%Y-%m-%d")
+                        except Exception:
+                            dt = None
+                    timestamp = int(time.mktime(dt.timetuple()) * 1000) if dt else 0
+                except Exception:
+                    timestamp = 0
+            else:
+                timestamp = 0
+
+            doc = {
+                "date": date,
+                "timestamp": timestamp,
+                "type": type_,
+                "number": number,
+                "amount": amount,
+                "payed_amount": payed_amount,
+                "wallet": wallet,
+                "images": images,
+            }
+
+            result = factory.insert_one(doc)
+            return Response(
+                {"message": "Factory created successfully", "id": str(result.inserted_id)},
+                status=status.HTTP_201_CREATED
+            )
+
+        # ---------------- PATCH ----------------
+        elif request.method == "PATCH":
+            if not factory_id:
+                return Response({"error": "Factory ID is required for update"}, status=status.HTTP_400_BAD_REQUEST)
+
+            update_data = request.data
+            if not update_data:
+                return Response({"error": "No data provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+            set_fields = {}
+
+            # --- SAME VALIDATION STYLE AS POST, but only for provided fields ---
+
+            if "date" in update_data:
+                date_val = update_data.get("date", "") or ""
+                set_fields["date"] = date_val
+
+                # keep timestamp consistent with POST: milliseconds
+                if date_val:
+                    try:
+                        import datetime
+                        dt = None
+                        try:
+                            dt = datetime.datetime.fromisoformat(date_val)
+                        except Exception:
+                            try:
+                                dt = datetime.datetime.strptime(date_val, "%Y-%m-%d")
+                            except Exception:
+                                dt = None
+                        set_fields["timestamp"] = int(time.mktime(dt.timetuple()) * 1000) if dt else 0
+                    except Exception:
+                        set_fields["timestamp"] = 0
+                else:
+                    set_fields["timestamp"] = 0
+
+            if "type" in update_data:
+                set_fields["type"] = str(update_data.get("type", "")).strip()
+
+            if "number" in update_data:
+                try:
+                    set_fields["number"] = int(update_data.get("number", 0))
+                except Exception:
+                    return Response({"error": "number must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+            if "amount" in update_data:
+                try:
+                    set_fields["amount"] = float(update_data.get("amount", 0))
+                except Exception:
+                    return Response({"error": "amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+            if "payed_amount" in update_data:
+                try:
+                    set_fields["payed_amount"] = float(update_data.get("payed_amount", 0))
+                except Exception:
+                    return Response({"error": "payed_amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+            if "wallet" in update_data:
+                set_fields["wallet"] = update_data.get("wallet", "") or ""
+
+            if "images" in update_data:
+                imgs = update_data.get("images", [])
+                if imgs is None:
+                    imgs = []
+                # (optional) enforce list type if you want:
+                if not isinstance(imgs, list):
+                    return Response({"error": "images must be a list"}, status=status.HTTP_400_BAD_REQUEST)
+                set_fields["images"] = imgs
+
+            if not set_fields:
+                return Response({"error": "No valid fields provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = factory.update_one(
+                {"_id": ObjectId(factory_id)},
+                {"$set": set_fields}
+            )
+
+            if result.matched_count == 0:
+                return Response({"error": "Factory not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            updated_doc = factory.find_one({"_id": ObjectId(factory_id)})
+            return Response({"data": mongo_to_json(updated_doc)}, status=status.HTTP_200_OK)
+
+        # ---------------- DELETE ----------------
+        elif request.method == "DELETE":
+            if not factory_id:
+                return Response({"error": "Factory ID is required for deletion"}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = factory.delete_one({"_id": ObjectId(factory_id)})
+            if result.deleted_count == 0:
+                return Response({"error": "Factory not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            return Response({"message": "Factory deleted"}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
 
 @api_view(["GET", "POST", "PATCH", "DELETE"])
 def facteursAPI(request, facteur_id=None ):
@@ -154,7 +388,6 @@ def facteursAPI(request, facteur_id=None ):
         print(e)
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
- 
  
 @api_view(["GET", "POST", "PATCH", "DELETE"])
 def storesDebtAPI(request, storesDebt_id=None ):
@@ -339,26 +572,29 @@ def upload_image(request):
 
 @csrf_exempt
 def upload_facteur_image(request):
+    # #region agent log
+    _debug_log("views.py:upload_facteur_image", "upload request", {"request_class": request.__class__.__name__, "method": request.method, "has_files": bool(request.FILES)}, "upload_wsgi")
+    # #endregion
     if request.method == 'POST' and request.FILES.get('image'):
-        image = request.FILES['image']
-        tel = request.POST.get('tel')
-        place=request.POST.get('place')
+        try:
+            image = request.FILES['image']
+            place=request.POST.get('place')
 
-        if not tel:
-            return JsonResponse({'error': 'tel is required'}, status=400)
+    
+            ext = os.path.splitext(image.name)[1]
+            safe_name = f"{uuid.uuid4()}{ext}"
 
-        ext = os.path.splitext(image.name)[1]
-        safe_name = f"{uuid.uuid4()}{ext}"
+            # Correct folder structure
+            path = default_storage.save(
+                f'uploads/{place}/{safe_name}',
+                image
+            )
 
-        # Correct folder structure
-        path = default_storage.save(
-            f'uploads/{place}/{tel}/{safe_name}',
-            image
-        )
+            url = request.build_absolute_uri(settings.MEDIA_URL + path)
 
-        url = request.build_absolute_uri(settings.MEDIA_URL + path)
-
-        return JsonResponse({'url': url})
+            return JsonResponse({'url': url})
+        except Exception as e:
+            print(e)
 
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
@@ -892,6 +1128,7 @@ def stockChangesAPI(request, change_id=None):
 
 
 
+ 
 
 
 
