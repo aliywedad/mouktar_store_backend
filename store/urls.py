@@ -2,13 +2,20 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
 from .backup import *
- 
+from .auth_views import *
 
 router = DefaultRouter()
  
 
 
 urlpatterns = [ 
+
+    path("api/auth/register/", register, name="register"),
+    path("api/auth/login/", login, name="login"),
+    path("api/auth/change-password/", change_password, name="change-password"),
+    path("api/auth/user/<str:user_id>/", get_user_by_id, name="get-user-by-id"),
+
+    
     path("facteurs/", facteursAPI, name="facteurs"),
     path("storesDebtAPI/", storesDebtAPI, name="storesDebtAPI"),
     # GET single / PATCH / DELETE

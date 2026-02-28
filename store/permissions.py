@@ -1,7 +1,8 @@
 # permissions.py
 from rest_framework.permissions import BasePermission
  
-
+from .mongo import users
+from .auth_views import get_user_by_id
 class HasTokenPermission(BasePermission):
     
     """
@@ -15,12 +16,10 @@ class HasTokenPermission(BasePermission):
         auth_header = request.headers.get('Authorization')
         if auth_header :
             token = auth_header.split(' ')[1]
-            # print("token : ",token)
-            if token == "34135930-2025":
-                print("special token access granted  ")
+            user = users.find_one({"token": token})
+            if user:
                 return True
+            else:
+                return False
  
-        return True
-            
-    
         return False

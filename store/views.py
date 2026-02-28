@@ -58,6 +58,7 @@ def _debug_log(location, message, data, hypothesis_id=None):
     except Exception:
         pass
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def factoryAPI(request, factory_id=None):
     import time
 
@@ -267,6 +268,7 @@ def factoryAPI(request, factory_id=None):
 
 
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def facteursAPI(request, facteur_id=None ):
     try:
         # ---------------- GET ----------------
@@ -390,6 +392,7 @@ def facteursAPI(request, facteur_id=None ):
 
  
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def storesDebtAPI(request, storesDebt_id=None ):
     try:
         # ---------------- GET ----------------
@@ -605,6 +608,7 @@ def upload_facteur_image(request):
 
 
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def productsAPI(request, product_id=None):
     try:
         # ---------------- GET ----------------
@@ -695,6 +699,7 @@ from rest_framework import status
 
  
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def stockAPI(request, stock_id=None):
     try:
         # ---------------- GET ----------------
@@ -785,6 +790,7 @@ def stockAPI(request, stock_id=None):
 
 
 @api_view(["POST"])
+@permission_classes([HasTokenPermission])
 def addStockChangesAPI(request):
  
     print("calling the api ================= ")
@@ -882,6 +888,7 @@ def addStockChangesAPI(request):
 
 
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def stockChangesAPI(request, change_id=None):
     try:
         if request.method == "GET":
@@ -1135,6 +1142,8 @@ def stockChangesAPI(request, change_id=None):
 
 
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
+
 def paymentsAPI(request, payme_id=None):
     try:
         # ---------------- GET ----------------
@@ -1222,6 +1231,7 @@ def paymentsAPI(request, payme_id=None):
 
 
 @api_view(["POST"])
+@permission_classes([HasTokenPermission])
 def checkPhoneNumberExistence(request):
     tel = int(request.data.get("tel"))
 
@@ -1244,6 +1254,7 @@ def checkPhoneNumberExistence(request):
 
 
 @api_view(["POST"])
+@permission_classes([HasTokenPermission])
 def addNewPayment(request):
     try:
         tel = int(request.data.get("tel", 0))
@@ -1339,6 +1350,7 @@ from bson import ObjectId
 from datetime import datetime
 
 @api_view(["POST"])
+@permission_classes([HasTokenPermission])
 def confirmeFacteur(request):
     try:
         facteur_id = request.data.get("id_facteur")
@@ -1451,6 +1463,7 @@ def export_json(request):
 
 
 @api_view(["DELETE"])
+@permission_classes([HasTokenPermission])
 def deletePayment(request):
     try:
         payment_id = request.data.get("payment_id")
@@ -1501,6 +1514,7 @@ def deletePayment(request):
 
     
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def debtsAPI(request, debt_id=None):
     try:
         # ---------------- GET ----------------
@@ -1643,6 +1657,7 @@ def debtsAPI(request, debt_id=None):
  
  
 @api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
 def NotesAPI(request, Notes_id=None):
     try:
         # ---------------- GET ----------------
@@ -1753,7 +1768,7 @@ def NotesAPI(request, Notes_id=None):
 from django.http import HttpResponse
 
 @api_view(["GET"])
-
+@permission_classes([HasTokenPermission])
 def download_image(request):
     url = request.GET.get('url')
     if not url:
@@ -1769,6 +1784,7 @@ def download_image(request):
     return response
 
 @api_view(["POST"])
+@permission_classes([HasTokenPermission])
 def getDebtsByPhone(request):
     tel = request.data.get("tel",0)
    

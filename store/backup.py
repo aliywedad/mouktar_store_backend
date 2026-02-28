@@ -53,7 +53,10 @@ def export_data_to_telegram(request):
             "debts": [mongo_to_json(doc) for doc in db['debts'].find()],
             "products": [mongo_to_json(doc) for doc in db['products'].find()],
             "payments": [mongo_to_json2(doc) for doc in db['payments'].find()],
+            "stock": [mongo_to_json(doc) for doc in db['Stock'].find()],
+            "stockChanges": [mongo_to_json(doc) for doc in db['StockChanges'].find()],
             "storeDebts": [mongo_to_json(doc) for doc in db['Stores_debt'].find()],
+            "factory": [mongo_to_json(doc) for doc in db['factory'].find()],
         }
 
         # 🔹 Create JSON file
