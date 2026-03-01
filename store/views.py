@@ -146,7 +146,8 @@ def factoryAPI(request, factory_id=None):
                     timestamp = 0
             else:
                 timestamp = 0
-
+            if type_ == "checkOut":
+                timestamp = int(time.time() * 1000)
             doc = {
                 "date": date,
                 "timestamp": timestamp,
@@ -157,6 +158,8 @@ def factoryAPI(request, factory_id=None):
                 "wallet": wallet,
                 "images": images,
             }
+            if type_ == "checkOut":
+                doc["msg"] = request.data.get('msg', "")
 
             result = factory.insert_one(doc)
             return Response(
@@ -213,6 +216,12 @@ def factoryAPI(request, factory_id=None):
                     set_fields["amount"] = float(update_data.get("amount", 0))
                 except Exception:
                     return Response({"error": "amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+            if "amount_remise" in update_data:
+                try:
+                    set_fields["amount_remise"] = float(update_data.get("amount_remise", 0))
+                except Exception:
+                    return Response({"error": "amount_remise must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
 
             if "payed_amount" in update_data:
                 try:
