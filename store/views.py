@@ -1777,7 +1777,7 @@ def NotesAPI(request, Notes_id=None):
 from django.http import HttpResponse
 
 @api_view(["GET"])
-@permission_classes([HasTokenPermission])
+# @permission_classes([HasTokenPermission])
 def download_image(request):
     url = request.GET.get('url')
     if not url:
