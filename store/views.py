@@ -859,21 +859,23 @@ def addStockChangesAPI(request):
         change_doc = dict(data)
         change_doc["stockId"] = str(stock_id)  # keep it as string for front
         change_doc["Quantity"] = change_qty
+        change_doc["product"] = request.data.get("product")
+        
        
 
         # 1) Insert into StockChanges
         ins = StockChanges.insert_one(change_doc)
-
+ 
         # 2) Decrease stock Quantity
         if type =="OUT":
             Stock.update_one(
                 {"_id": ObjectId(stock_id)},
-                {"$inc": {"Quantity": -change_qty}}
+                {"$inc": {"Quantity": -change_qty},"$set": {"timestamp": data["timestamp"]}},
             )
         else:
             Stock.update_one(
                 {"_id": ObjectId(stock_id)},
-                {"$inc": {"Quantity": change_qty}}
+                {"$inc": {"Quantity": change_qty},"$set": {"timestamp": data["timestamp"]}},
             )
 
         updated_stock = Stock.find_one({"_id": ObjectId(stock_id)})
@@ -984,7 +986,7 @@ def stockChangesAPI(request, change_id=None):
                 )
 
             current_qty = float(stock_doc.get("Quantity", 0))
-
+            now_ms = int(datetime.now().timestamp() * 1000)
             # ---------- تعديل المخزون ----------
             if change_type == "OUT":
                 if current_qty < change_qty:
@@ -993,18 +995,19 @@ def stockChangesAPI(request, change_id=None):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
+                # update the timestamp of the stock
                 Stock.update_one(
                     {"_id": ObjectId(stock_id)},
-                    {"$inc": {"Quantity": -change_qty}},
-                )
-
+                    {"$inc": {"Quantity": -change_qty},"$set": {"timestamp": now_ms},},
+                 )
+                print("timestamp of the stock is updated to ", now_ms)
             elif change_type == "IN":
                 Stock.update_one(
                     {"_id": ObjectId(stock_id)},
-                    {"$inc": {"Quantity": change_qty}},
+                    {"$inc": {"Quantity": change_qty},"$set": {"timestamp": now_ms},},
                 )
-
-            data["timestamp"] = time.time()
+                print("timestamp of the stock is updated to ", now_ms)
+            data["timestamp"] = now_ms
             result = StockChanges.insert_one(data)
 
             return Response(
@@ -1012,6 +1015,8 @@ def stockChangesAPI(request, change_id=None):
                 status=status.HTTP_201_CREATED,
             )
 
+        
+        
         # =================================
         # ------------ PATCH --------------
         # =================================
