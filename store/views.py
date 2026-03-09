@@ -780,12 +780,15 @@ def stockAPI(request, stock_id=None):
             if not stock_id:
                 return Response({"error": "Stock ID is required for deletion"}, status=status.HTTP_400_BAD_REQUEST)
 
+            # delete the stock
             result = Stock.delete_one({"_id": ObjectId(stock_id)})
             if result.deleted_count == 0:
                 return Response({"error": "Stock item not found"}, status=status.HTTP_404_NOT_FOUND)
 
-            return Response({"message": "Stock item deleted"}, status=status.HTTP_200_OK)
+            # delete all related stock changes
+            StockChanges.delete_many({"stockId": stock_id})
 
+            return Response({"message": "Stock item and related stock changes deleted"}, status=status.HTTP_200_OK)
     except Exception as e:
         print(e)
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
