@@ -829,7 +829,7 @@ def addStockChangesAPI(request):
             return Response({"error": "Quantity is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            change_qty = float(change_qty)
+            change_qty = round(float(float(change_qty) ), 2)
         except Exception:
             return Response({"error": "Quantity must be a number"}, status=status.HTTP_400_BAD_REQUEST)
 
