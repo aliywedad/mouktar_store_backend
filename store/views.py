@@ -814,7 +814,7 @@ def addStockChangesAPI(request):
             data['tel'] = int(data.get("tel",0))
         else:
             data['tel']=0
-        data['Quantity'] = float(data.get("Quantity"))
+        data['Quantity'] = round(float(data.get("Quantity")), 2)
         data["timestamp"] = int(datetime.now().timestamp() * 1000)
         type = data.get("type")
         stock_id = data.get("stockId")
