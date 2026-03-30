@@ -48,8 +48,12 @@ urlpatterns = [
     path('deletePayment/', deletePayment, name='deletePayment   '),
     path('export_json/', export_json, name='export_json'),
     path('addStockChangesAPI/', addStockChangesAPI, name='addStockChangesAPI'),
-    
-    
+    path('addStoreChangesAPI/', addStoreChangesAPI, name='addStoreChangesAPI'),
+    path("storeAPI/", storeAPI, name="storeAPI"),
+    path("storeChangesAPI/", StoreChangesAPI, name="storeChangesAPI"),
+    path("storeAPI/<str:store_id>/", storeAPI, name="storeAPI-detail"),
+    path("addMultipleStockChangesAPI/", addMultipleStockChangesAPI, name="addMultipleStockChangesAPI"),
+    path("addMultipleStoreChangesAPI/", addMultipleStoreChangesAPI, name="addMultipleStoreChangesAPI"),
     
     path("notes/", NotesAPI, name="notes"),
     path("notes/<str:Notes_id>/", NotesAPI, name="notes-detail"),

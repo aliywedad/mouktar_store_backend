@@ -34,7 +34,7 @@ import traceback
 from django.utils.deprecation import MiddlewareMixin
 from rest_framework import status
 
-
+from .const import *
 
 
 
@@ -114,15 +114,18 @@ def factoryAPI(request, factory_id=None):
                 return Response({"error": "number must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
 
             try:
-                amount = float(data.get("amount", 0))
+                amount = round_number(data.get("amount", 0))
             except Exception:
                 return Response({"error": "amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
 
             try:
-                payed_amount = float(data.get("payed_amount", 0))
+                payed_amount = round_number(data.get("payed_amount", 0))
             except Exception:
                 return Response({"error": "payed_amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
-
+            try:
+                amount_remise = round_number(data.get("amount_remise", 0))
+            except Exception:
+                return Response({"error": "amount_remise must be a number"}, status=status.HTTP_400_BAD_REQUEST)
             wallet = data.get("wallet", "") or ""
 
             images = data.get("images", [])
@@ -148,12 +151,14 @@ def factoryAPI(request, factory_id=None):
                 timestamp = 0
             if type_ == "checkOut":
                 timestamp = int(time.time() * 1000)
+                
             doc = {
                 "date": date,
                 "timestamp": timestamp,
                 "type": type_,
                 "number": number,
                 "amount": amount,
+                "amount_remise": amount_remise,
                 "payed_amount": payed_amount,
                 "wallet": wallet,
                 "images": images,
@@ -401,7 +406,6 @@ def facteursAPI(request, facteur_id=None ):
 
  
 @api_view(["GET", "POST", "PATCH", "DELETE"])
-@permission_classes([HasTokenPermission])
 def storesDebtAPI(request, storesDebt_id=None ):
     try:
         # ---------------- GET ----------------
@@ -584,9 +588,6 @@ def upload_image(request):
 
 @csrf_exempt
 def upload_facteur_image(request):
-    # #region agent log
-    _debug_log("views.py:upload_facteur_image", "upload request", {"request_class": request.__class__.__name__, "method": request.method, "has_files": bool(request.FILES)}, "upload_wsgi")
-    # #endregion
     if request.method == 'POST' and request.FILES.get('image'):
         try:
             image = request.FILES['image']
@@ -862,6 +863,7 @@ def addStockChangesAPI(request):
         change_doc = dict(data)
         change_doc["stockId"] = str(stock_id)  # keep it as string for front
         change_doc["Quantity"] = change_qty
+        change_doc["package"] = stock_doc.get("package", "")
         change_doc["product"] = request.data.get("product")
         
        
@@ -897,6 +899,259 @@ def addStockChangesAPI(request):
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
 
+
+
+@api_view(["POST"])
+@permission_classes([HasTokenPermission])
+def addMultipleStockChangesAPI(request):
+    try:
+        data = request.data
+        name     = data.get("name", "")
+        tel_raw  = data.get("tel", 0)
+        type_    = data.get("type")
+        date_ts  = data.get("date", int(datetime.now().timestamp() * 1000))
+        items    = data.get("items", [])
+
+        # ── Basic validation ──────────────────────────────────────────
+        if type_ not in ["IN", "OUT"]:
+            return Response({"error": "type must be IN or OUT"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not items:
+            return Response({"error": "items list is required and cannot be empty"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Parse tel
+        try:
+            tel = int(tel_raw) if tel_raw else 0
+        except (ValueError, TypeError):
+            tel = 0
+
+        # Validate tel for OUT movements
+        if type_ == "OUT":
+            is_valid_tel, tel_result = validate_tel(tel)
+            if not is_valid_tel:
+                return Response({"error": tel_result},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        # ── Per-item validation & stock check ────────────────────────
+        errors = []
+        resolved_items = []  # will hold (stock_doc, change_qty, item)
+
+        for idx, item in enumerate(items):
+            stock_id  = item.get("id")
+            change_qty_raw = item.get("quantity")   # the qty the user wants to move
+
+            if not stock_id:
+                errors.append({"index": idx, "error": "stockId (id) is required"})
+                continue
+
+            try:
+                change_qty = round(float(change_qty_raw), 2)
+            except (TypeError, ValueError):
+                errors.append({"index": idx, "error": "quantity must be a number"})
+                continue
+
+            if change_qty <= 0:
+                errors.append({"index": idx, "error": "quantity must be > 0"})
+                continue
+
+            stock_doc = Stock.find_one({"_id": ObjectId(stock_id)})
+            if not stock_doc:
+                errors.append({"index": idx, "error": f"Stock item {stock_id} not found"})
+                continue
+
+            if type_ == "OUT":
+                current_qty = float(stock_doc.get("Quantity", 0))
+                if current_qty < change_qty:
+                    errors.append({
+                        "index": idx,
+                        "name":  item.get("name"),
+                        "error": "Insufficient stock",
+                        "available": current_qty,
+                        "requested": change_qty,
+                    })
+                    continue
+
+            resolved_items.append((stock_doc, change_qty, item))
+
+        if errors:
+            return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ── Apply changes ─────────────────────────────────────────────
+        inserted_ids   = []
+        updated_stocks = []
+        now_ts = int(datetime.now().timestamp() * 1000)
+
+        for stock_doc, change_qty, item in resolved_items:
+            stock_id = str(stock_doc["_id"])
+
+            change_doc = {
+                "stockId":   stock_id,
+                "name":      name,
+                "tel":       tel,
+                "type":      type_,
+                "Quantity":  change_qty,
+                "product":   item.get("name"),
+                "package":   item.get("package"),
+                "timestamp": now_ts,
+                "date":      date_ts,
+            }
+
+            ins = StockChanges.insert_one(change_doc)
+            inserted_ids.append(str(ins.inserted_id))
+
+            increment = -change_qty if type_ == "OUT" else change_qty
+            Stock.update_one(
+                {"_id": ObjectId(stock_id)},
+                {"$inc": {"Quantity": increment},
+                 "$set": {"timestamp": now_ts}},
+            )
+
+            updated = Stock.find_one({"_id": ObjectId(stock_id)})
+            updated_stocks.append(mongo_to_json(updated))
+
+        return Response(
+            {
+                "message":       "Multiple stock changes created successfully",
+                "count":         len(inserted_ids),
+                "changeIds":     inserted_ids,
+                "updatedStocks": updated_stocks,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+@api_view(["POST"])
+@permission_classes([HasTokenPermission])
+def addMultipleStoreChangesAPI(request):
+    try:
+        data = request.data
+        name     = data.get("name", "")
+        tel_raw  = data.get("tel", 0)
+        type_    = data.get("type")
+        date_ts  = data.get("date", int(datetime.now().timestamp() * 1000))
+        items    = data.get("items", [])
+
+        # ── Basic validation ──────────────────────────────────────────
+        if type_ not in ["IN", "OUT"]:
+            return Response({"error": "type must be IN or OUT"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not items:
+            return Response({"error": "items list is required and cannot be empty"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Parse tel
+        try:
+            tel = int(tel_raw) if tel_raw else 0
+        except (ValueError, TypeError):
+            tel = 0
+
+        # Validate tel for OUT movements
+        if type_ == "OUT":
+            is_valid_tel, tel_result = validate_tel(tel)
+            if not is_valid_tel:
+                return Response({"error": tel_result},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        # ── Per-item validation & Store check ────────────────────────
+        errors = []
+        resolved_items = []  # will hold (Store_doc, change_qty, item)
+
+        for idx, item in enumerate(items):
+            Store_id  = item.get("id")
+            change_qty_raw = item.get("quantity")   # the qty the user wants to move
+
+            if not Store_id:
+                errors.append({"index": idx, "error": "StoreId (id) is required"})
+                continue
+
+            try:
+                change_qty = round(float(change_qty_raw), 2)
+            except (TypeError, ValueError):
+                errors.append({"index": idx, "error": "quantity must be a number"})
+                continue
+
+            if change_qty <= 0:
+                errors.append({"index": idx, "error": "quantity must be > 0"})
+                continue
+
+            Store_doc = Store.find_one({"_id": ObjectId(Store_id)})
+            if not Store_doc:
+                errors.append({"index": idx, "error": f"Store item {Store_id} not found"})
+                continue
+
+            if type_ == "OUT":
+                current_qty = float(Store_doc.get("Quantity", 0))
+                if current_qty < change_qty:
+                    errors.append({
+                        "index": idx,
+                        "name":  item.get("name"),
+                        "error": "Insufficient Store",
+                        "available": current_qty,
+                        "requested": change_qty,
+                    })
+                    continue
+
+            resolved_items.append((Store_doc, change_qty, item))
+
+        if errors:
+            return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ── Apply changes ─────────────────────────────────────────────
+        inserted_ids   = []
+        updated_Stores = []
+        now_ts = int(datetime.now().timestamp() * 1000)
+
+        for Store_doc, change_qty, item in resolved_items:
+            Store_id = str(Store_doc["_id"])
+
+            change_doc = {
+                "StoreId":   Store_id,
+                "name":      name,
+                "tel":       tel,
+                "type":      type_,
+                "Quantity":  change_qty,
+                "product":   item.get("name"),
+                "package":   item.get("package"),
+                "timestamp": now_ts,
+                "date":      date_ts,
+            }
+
+            ins = StoreChanges.insert_one(change_doc)
+            inserted_ids.append(str(ins.inserted_id))
+
+            increment = -change_qty if type_ == "OUT" else change_qty
+            Store.update_one(
+                {"_id": ObjectId(Store_id)},
+                {"$inc": {"Quantity": increment},
+                 "$set": {"timestamp": now_ts}},
+            )
+
+            updated = Store.find_one({"_id": ObjectId(Store_id)})
+            updated_Stores.append(mongo_to_json(updated))
+
+        return Response(
+            {
+                "message":       "Multiple Store changes created successfully",
+                "count":         len(inserted_ids),
+                "changeIds":     inserted_ids,
+                "updatedStores": updated_Stores,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -1155,6 +1410,452 @@ def stockChangesAPI(request, change_id=None):
  
 
 
+
+
+
+
+
+
+@api_view(["POST"])
+@permission_classes([HasTokenPermission])
+def addStoreChangesAPI(request):
+ 
+    print("calling the api ================= ")
+    print(request.data)
+
+    try:
+        data = request.data or {}
+        if(data['tel']):
+            data['tel'] = int(data.get("tel",0))
+        else:
+            data['tel']=0
+        data['Quantity'] = round(float(data.get("Quantity")), 2)
+        data["timestamp"] = int(datetime.now().timestamp() * 1000)
+        type = data.get("type")
+        store_id = data.get("StoreId")
+        change_qty = data.get("Quantity")
+
+        if type not in ['IN','OUT']:
+            return Response({"error": "the type is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not store_id:
+            return Response({"error": "StoreId is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if change_qty is None:
+            return Response({"error": "Quantity is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            change_qty = round(float(float(change_qty) ), 2)
+        except Exception:
+            return Response({"error": "Quantity must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if change_qty <= 0:
+            return Response({"error": "Quantity must be > 0"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ensure Store exists
+        # تحقق من رقم الهاتف
+        is_valid_tel, tel_result = validate_tel(data['tel'])
+        if not is_valid_tel and type=='OUT':
+            return Response(
+                {"error": tel_result},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        Store_doc = Store.find_one({"_id": ObjectId(store_id)})
+        if not Store_doc:
+            return Response({"error": "Store item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        current_qty = float(Store_doc.get("Quantity", 0))
+
+        # Decrease Quantity (OUT)
+        if type =="OUT" and current_qty < change_qty:
+            return Response(
+                {"error": "Insufficient Store", "available": current_qty},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare change doc
+        change_doc = dict(data)
+        change_doc["StoreId"] = str(store_id)  # keep it as string for front
+        change_doc["Quantity"] = change_qty
+        change_doc["product"] = request.data.get("product")
+        
+       
+
+        # 1) Insert into StoreChanges
+        ins = StoreChanges.insert_one(change_doc)
+ 
+        # 2) Decrease Store Quantity
+        if type =="OUT":
+            Store.update_one(
+                {"_id": ObjectId(store_id)},
+                {"$inc": {"Quantity": -change_qty},"$set": {"timestamp": data["timestamp"]}},
+            )
+        else:
+            Store.update_one(
+                {"_id": ObjectId(store_id)},
+                {"$inc": {"Quantity": change_qty},"$set": {"timestamp": data["timestamp"]}},
+            )
+
+        updated_Store = Store.find_one({"_id": ObjectId(store_id)})
+
+        return Response(
+            {
+                "message": "Store change created and Quantity decreased",
+                "changeId": str(ins.inserted_id),
+                "Store": mongo_to_json(updated_Store),
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
+def storeAPI(request, store_id=None):
+    try:
+        # ---------------- GET ----------------
+        if request.method == "GET":
+            # Filters (same style as your productsAPI)
+            name = request.GET.get("name")                 # e.g. item name / Store name
+            createdFrom = request.GET.get("createdFrom")   # timestamp (float/int)
+            createdTo = request.GET.get("createdTo")       # timestamp (float/int)
+            # optional numeric
+
+            if store_id:
+                doc = Store.find_one({"_id": ObjectId(store_id)})
+                if not doc:
+                    return Response({"error": "Store item not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"data": mongo_to_json(doc)}, status=status.HTTP_200_OK)
+
+            # Build query
+            query = {}
+ 
+            # Date range on timestamp (same as your code)
+            if createdFrom or createdTo:
+                date_filter = {}
+                if createdFrom:
+                    date_filter["$gte"] = float(createdFrom)
+                if createdTo:
+                    date_filter["$lte"] = float(createdTo)
+                query["timestamp"] = date_filter
+
+            # Newest first
+            data = [mongo_to_json(d) for d in Store.find(query).sort("timestamp", -1)]
+            return Response({"data": data}, status=status.HTTP_200_OK)
+
+        # ---------------- POST ----------------
+        elif request.method == "POST":
+            data = request.data
+
+            # Optional: auto timestamp if not provided
+            # import time
+            # data.setdefault("timestamp", time.time())
+
+            result = Store.insert_one(data)
+            return Response(
+                {"message": "Store item created", "id": str(result.inserted_id)},
+                status=status.HTTP_201_CREATED,
+            )
+
+        # ---------------- PATCH / UPDATE ----------------
+        elif request.method == "PATCH":
+            if not store_id:
+                return Response({"error": "Store ID is required for update"}, status=status.HTTP_400_BAD_REQUEST)
+
+            update_data = request.data
+            if not update_data:
+                return Response({"error": "No data provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+            result = Store.update_one(
+                {"_id": ObjectId(store_id)},
+                {"$set": update_data},
+            )
+
+            if result.matched_count == 0:
+                return Response({"error": "Store item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            updated_doc = Store.find_one({"_id": ObjectId(store_id)})
+            return Response({"data": mongo_to_json(updated_doc)}, status=status.HTTP_200_OK)
+
+        # ---------------- DELETE ----------------
+        elif request.method == "DELETE":
+            if not store_id:
+                return Response({"error": "Store ID is required for deletion"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # delete the Store
+            result = Store.delete_one({"_id": ObjectId(store_id)})
+            if result.deleted_count == 0:
+                return Response({"error": "Store item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # delete all related Store changes
+            StoreChanges.delete_many({"StoreId": store_id})
+
+            return Response({"message": "Store item and related Store changes deleted"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(e)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([HasTokenPermission])
+def StoreChangesAPI(request, change_id=None):
+    try:
+        if request.method == "GET":
+
+            StoreId = request.GET.get("StoreItemId")
+            type_filter = request.GET.get("type")
+            createdFrom = request.GET.get("createdFrom")
+            createdTo = request.GET.get("createdTo")
+            tel = request.GET.get("phone")
+
+            query = {}
+
+            if StoreId:
+                query["StoreId"] = StoreId
+            if tel:
+                query["tel"] = int(tel)
+            if type_filter:
+                query["type"] = type_filter
+
+            if createdFrom or createdTo:
+                date_filter = {}
+                if createdFrom:
+                    date_filter["$gte"] = float(createdFrom)
+                if createdTo:
+                    date_filter["$lte"] = float(createdTo)
+                query["timestamp"] = date_filter
+
+            data = [
+                mongo_to_json(d)
+                for d in StoreChanges.find(query).sort("timestamp", -1)
+            ]
+
+            return Response(
+                {"data": data},
+                status=status.HTTP_200_OK
+            )
+        # =================================
+        # ------------ POST ---------------
+        # =================================
+        if request.method == "POST":
+
+            data = request.data
+            store_id = data.get("StoreId")
+            change_qty = data.get("Quantity")
+            change_type = data.get("type", "OUT")
+            tel = int(data.get("tel"))
+
+            # ---------- VALIDATION ----------
+            if not store_id or change_qty is None:
+                return Response(
+                    {"error": "يجب إدخال معرف المخزون والكمية"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            tel_str=str(update_data['tel'])
+            if len(tel_str) != 8:
+                error= "رقم الهاتف يجب أن يكون 8 أرقام فقط"
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # تحقق من رقم الهاتف
+            is_valid_tel, tel_result = validate_tel(tel)
+            if not is_valid_tel:
+                return Response(
+                    {"error": tel_result},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            data["tel"] = tel_result  # تخزينه كـ int
+
+            try:
+                change_qty = float(change_qty)
+            except:
+                return Response(
+                    {"error": "الكمية يجب أن تكون رقمًا"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            Store_doc = Store.find_one({"_id": ObjectId(store_id)})
+            if not Store_doc:
+                return Response(
+                    {"error": "الصنف غير موجود"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            current_qty = float(Store_doc.get("Quantity", 0))
+            now_ms = int(datetime.now().timestamp() * 1000)
+            # ---------- تعديل المخزون ----------
+            if change_type == "OUT":
+                if current_qty < change_qty:
+                    return Response(
+                        {"error": "الكمية غير كافية في المخزون"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # update the timestamp of the Store
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": -change_qty},"$set": {"timestamp": now_ms},},
+                 )
+                print("timestamp of the Store is updated to ", now_ms)
+            elif change_type == "IN":
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": change_qty},"$set": {"timestamp": now_ms},},
+                )
+                print("timestamp of the Store is updated to ", now_ms)
+            data["timestamp"] = now_ms
+            result = StoreChanges.insert_one(data)
+
+            return Response(
+                {"message": "تم إنشاء عملية المخزون بنجاح"},
+                status=status.HTTP_201_CREATED,
+            )
+
+        
+        
+        # =================================
+        # ------------ PATCH --------------
+        # =================================
+        elif request.method == "PATCH":
+
+            if not change_id:
+                return Response(
+                    {"error": "معرف العملية مطلوب"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            update_data = request.data
+
+            # تحقق من الهاتف إذا تم إرساله
+            if "tel" in update_data:
+                tel_str=str(update_data['tel'])
+                if len(tel_str) != 8:
+                    error= "رقم الهاتف يجب أن يكون 8 أرقام فقط"
+                    return Response(
+                        {"error": error},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                is_valid_tel, tel_result = validate_tel(update_data["tel"])
+                if not is_valid_tel:
+                    return Response(
+                        {"error": tel_result},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                update_data["tel"] = tel_result
+
+            old_doc = StoreChanges.find_one({"_id": ObjectId(change_id)})
+            if not old_doc:
+                return Response(
+                    {"error": "عملية المخزون غير موجودة"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # استرجاع الكمية القديمة
+            old_qty = float(old_doc.get("Quantity", 0))
+            old_type = old_doc.get("type")
+            store_id = old_doc.get("StoreId")
+
+            # إعادة الكمية القديمة للمخزون أولاً
+            if old_type == "OUT":
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": old_qty}},
+                )
+            else:
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": -old_qty}},
+                )
+
+            # تطبيق التعديل الجديد إن وجد Quantity
+            new_qty = float(update_data.get("Quantity", old_qty))
+            new_type = update_data.get("type", old_type)
+
+            if new_type == "OUT":
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": -new_qty}},
+                )
+            else:
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": new_qty}},
+                )
+
+            StoreChanges.update_one(
+                {"_id": ObjectId(change_id)},
+                {"$set": update_data},
+            )
+
+            return Response(
+                {"message": "تم تعديل العملية بنجاح"},
+                status=status.HTTP_200_OK,
+            )
+
+        # =================================
+        # ------------ DELETE -------------
+        # =================================
+        elif request.method == "DELETE":
+
+            if not change_id:
+                return Response(
+                    {"error": "معرف العملية مطلوب"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            doc = StoreChanges.find_one({"_id": ObjectId(change_id)})
+            if not doc:
+                return Response(
+                    {"error": "عملية المخزون غير موجودة"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            qty = float(doc.get("Quantity", 0))
+            store_id = doc.get("StoreId")
+            change_type = doc.get("type")
+            print("=============================================================================================")
+            print(ObjectId(store_id))
+            print(doc)
+
+            # إعادة الكمية عند الحذف
+            if change_type == "OUT":
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": qty}},
+                )
+            else:
+                Store.update_one(
+                    {"_id": ObjectId(store_id)},
+                    {"$inc": {"Quantity": -qty}},
+                )
+
+            StoreChanges.delete_one({"_id": ObjectId(change_id)})
+
+            return Response(
+                {"message": "تم حذف العملية وإعادة تحديث المخزون بنجاح"},
+                status=status.HTTP_200_OK,
+            )
+
+    except Exception as e:
+        return Response(
+            {"error": "حدث خطأ غير متوقع", "details": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+
+ 
 
 
 

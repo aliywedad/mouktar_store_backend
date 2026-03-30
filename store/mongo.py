@@ -15,6 +15,10 @@ products= db['products']
 payments= db['payments']
 Stock= db['Stock']
 StockChanges=db['StockChanges']
+
+Store= db['Store']
+StoreChanges=db['StoreChanges']
+
 storesDebt= db['Stores_debt']
 factory= db['factory']
 def mongo_to_json(doc):
