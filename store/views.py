@@ -104,6 +104,7 @@ def factoryAPI(request, factory_id=None):
         # ---------------- POST ----------------
         elif request.method == "POST":
             data = request.data
+            print(data)
 
             date = data.get("date", "") or ""
             type_ = str(data.get("type", "")).strip()
@@ -111,26 +112,33 @@ def factoryAPI(request, factory_id=None):
             try:
                 number = int(data.get("number", 0))
             except Exception:
+                print("number must be an integer")
                 return Response({"error": "number must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 amount = round_number(data.get("amount", 0))
             except Exception:
+                print("amount must be a number")
                 return Response({"error": "amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 payed_amount = round_number(data.get("payed_amount", 0))
             except Exception:
+                print("payed_amount must be a number")
                 return Response({"error": "payed_amount must be a number"}, status=status.HTTP_400_BAD_REQUEST)
             try:
                 amount_remise = round_number(data.get("amount_remise", 0))
             except Exception:
-                return Response({"error": "amount_remise must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+                print("amount_remise must be a number")
+                amount_remise = 0
+                # return Response({"error": "amount_remise must be a number"}, status=status.HTTP_400_BAD_REQUEST)
             wallet = data.get("wallet", "") or ""
+
 
             images = data.get("images", [])
             if images is None:
                 images = []
+            print("passe images")
 
             # timestamp in milliseconds (same logic we will reuse in PATCH)
             if date:
