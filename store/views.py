@@ -824,7 +824,11 @@ def addStockChangesAPI(request):
         else:
             data['tel']=0
         data['Quantity'] = round(float(data.get("Quantity")), 2)
-        data["timestamp"] = int(datetime.now().timestamp() * 1000)
+        if(data['timestamp']):
+            data['timestamp'] = int(data.get("timestamp",0))
+        else:
+            data['timestamp'] = int(datetime.now().timestamp() * 1000)
+        nowts=int(datetime.now().timestamp() * 1000)
         type = data.get("type")
         stock_id = data.get("stockId")
         change_qty = data.get("Quantity")
@@ -883,12 +887,12 @@ def addStockChangesAPI(request):
         if type =="OUT":
             Stock.update_one(
                 {"_id": ObjectId(stock_id)},
-                {"$inc": {"Quantity": -change_qty},"$set": {"timestamp": data["timestamp"]}},
+                {"$inc": {"Quantity": -change_qty},"$set": {"timestamp": nowts}},
             )
         else:
             Stock.update_one(
                 {"_id": ObjectId(stock_id)},
-                {"$inc": {"Quantity": change_qty},"$set": {"timestamp": data["timestamp"]}},
+                {"$inc": {"Quantity": change_qty},"$set": {"timestamp": nowts}},
             )
 
         updated_stock = Stock.find_one({"_id": ObjectId(stock_id)})
