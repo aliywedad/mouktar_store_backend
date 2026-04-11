@@ -51,7 +51,9 @@ urlpatterns = [
     path('addStoreChangesAPI/', addStoreChangesAPI, name='addStoreChangesAPI'),
     path("storeAPI/", storeAPI, name="storeAPI"),
     path("storeChangesAPI/", StoreChangesAPI, name="storeChangesAPI"),
+    
     path("storeAPI/<str:store_id>/", storeAPI, name="storeAPI-detail"),
+    path("storeChangesAPI/<str:change_id>/", StoreChangesAPI, name="storeChangesAPI-detail"),
     path("addMultipleStockChangesAPI/", addMultipleStockChangesAPI, name="addMultipleStockChangesAPI"),
     path("addMultipleStoreChangesAPI/", addMultipleStoreChangesAPI, name="addMultipleStoreChangesAPI"),
     

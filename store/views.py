@@ -993,7 +993,6 @@ def addMultipleStockChangesAPI(request):
         # ── Apply changes ─────────────────────────────────────────────
         inserted_ids   = []
         updated_stocks = []
-        now_ts = int(datetime.now().timestamp() * 1000)
 
         for stock_doc, change_qty, item in resolved_items:
             stock_id = str(stock_doc["_id"])
@@ -1006,7 +1005,7 @@ def addMultipleStockChangesAPI(request):
                 "Quantity":  change_qty,
                 "product":   item.get("name"),
                 "package":   item.get("package"),
-                "timestamp": now_ts,
+                "timestamp": date_ts,
                 "date":      date_ts,
             }
 
@@ -1017,7 +1016,7 @@ def addMultipleStockChangesAPI(request):
             Stock.update_one(
                 {"_id": ObjectId(stock_id)},
                 {"$inc": {"Quantity": increment},
-                 "$set": {"timestamp": now_ts}},
+                 "$set": {"timestamp": date_ts}},
             )
 
             updated = Stock.find_one({"_id": ObjectId(stock_id)})
@@ -1121,7 +1120,7 @@ def addMultipleStoreChangesAPI(request):
         # ── Apply changes ─────────────────────────────────────────────
         inserted_ids   = []
         updated_Stores = []
-        now_ts = int(datetime.now().timestamp() * 1000)
+         
 
         for Store_doc, change_qty, item in resolved_items:
             Store_id = str(Store_doc["_id"])
@@ -1134,7 +1133,7 @@ def addMultipleStoreChangesAPI(request):
                 "Quantity":  change_qty,
                 "product":   item.get("name"),
                 "package":   item.get("package"),
-                "timestamp": now_ts,
+                "timestamp": date_ts,
                 "date":      date_ts,
             }
 
@@ -1145,7 +1144,7 @@ def addMultipleStoreChangesAPI(request):
             Store.update_one(
                 {"_id": ObjectId(Store_id)},
                 {"$inc": {"Quantity": increment},
-                 "$set": {"timestamp": now_ts}},
+                 "$set": {"timestamp": date_ts}},
             )
 
             updated = Store.find_one({"_id": ObjectId(Store_id)})
@@ -1442,7 +1441,10 @@ def addStoreChangesAPI(request):
         else:
             data['tel']=0
         data['Quantity'] = round(float(data.get("Quantity")), 2)
-        data["timestamp"] = int(datetime.now().timestamp() * 1000)
+        if(data['timestamp']):
+            data['timestamp'] = int(data.get("timestamp",0))
+        else:
+            data['timestamp'] = int(datetime.now().timestamp() * 1000)
         type = data.get("type")
         store_id = data.get("StoreId")
         change_qty = data.get("Quantity")
@@ -1819,6 +1821,9 @@ def StoreChangesAPI(request, change_id=None):
         # ------------ DELETE -------------
         # =================================
         elif request.method == "DELETE":
+            print("=============================================================================================")
+            print(change_id)
+            print("=============================================================================================")
 
             if not change_id:
                 return Response(
@@ -1828,6 +1833,9 @@ def StoreChangesAPI(request, change_id=None):
 
             doc = StoreChanges.find_one({"_id": ObjectId(change_id)})
             if not doc:
+                print("=============================================================================================")
+                print(doc)
+                print("=============================================================================================")
                 return Response(
                     {"error": "عملية المخزون غير موجودة"},
                     status=status.HTTP_404_NOT_FOUND,
