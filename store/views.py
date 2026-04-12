@@ -2000,6 +2000,7 @@ def addNewPayment(request):
         type = request.data.get("type")
         debtId = request.data.get("debtId", "")
         wallet = request.data.get("wallet", "")
+        timestamp = request.data.get("timestamp", 0)
 
         if not tel:
             return Response({"error": "tel is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -2008,8 +2009,10 @@ def addNewPayment(request):
         debt = debts.find_one({"_id": ObjectId(debtId)}) if debtId else debts.find_one({"tel": tel})
         if not debt:
             return Response({"error": "Debt not found for this tel"}, status=status.HTTP_404_NOT_FOUND)
-
-        now_ts = int(datetime.now().timestamp() * 1000)
+        if timestamp:
+            now_ts = int(timestamp)
+        else:
+            now_ts = int(datetime.now().timestamp() * 1000)
         FIVE_MINUTES = 5 * 60 * 1000
 
         # 🔹 Get the last payment for this phone & type
