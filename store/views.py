@@ -1995,10 +1995,10 @@ import subprocess
 def restart_mongodb(request):
     try:
         result = subprocess.run(
-            [  "systemctl", "restart", "mongod"],
+            [  "sudo", "systemctl", "restart", "mongod"],
             capture_output=True,
             text=True,
-            timeout=100
+            timeout=10
         )
         print("=================== result ==============================")
         print(result)
