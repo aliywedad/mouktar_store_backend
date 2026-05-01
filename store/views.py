@@ -1995,11 +1995,14 @@ import subprocess
 def restart_mongodb(request):
     try:
         result = subprocess.run(
-            ["sudo", "systemctl", "restart", "mongod"],
+            [  "systemctl", "restart", "mongod"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=100
         )
+        print("=================== result ==============================")
+        print(result)
+        print("=================== result ==============================")
 
         if result.returncode == 0:
             return JsonResponse({"status": "success"})
@@ -2010,6 +2013,8 @@ def restart_mongodb(request):
             }, status=500)
 
     except Exception as e:
+        print("=================== error ==============================")
+        print(e)
         return JsonResponse({"error": str(e)}, status=500)
 
 @api_view(["POST"])
