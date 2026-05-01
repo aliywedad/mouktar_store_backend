@@ -1990,7 +1990,27 @@ def checkPhoneNumberExistence(request):
     )
 
 
+import subprocess
+def restart_mongodb(request):
+    try:
+        result = subprocess.run(
+            ["sudo", "/bin/systemctl", "restart", "mongodb"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
 
+        if result.returncode == 0:
+            return JsonResponse({"status": "success"})
+        else:
+            return JsonResponse({
+                "status": "error",
+                "stderr": result.stderr
+            }, status=500)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+        
 @api_view(["POST"])
 @permission_classes([HasTokenPermission])
 def addNewPayment(request):

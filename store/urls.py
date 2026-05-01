@@ -66,6 +66,7 @@ urlpatterns = [
     path("checkPhoneNumberExistence/", checkPhoneNumberExistence, name="checkPhoneNumberExistence"),
     
     
+    path("admin/restart-mongodb/", restart_mongodb),
 
     
     
