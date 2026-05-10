@@ -2262,6 +2262,8 @@ def deletePayment(request):
 
                 # Prevent negative debt
                 if new_debt < 0:
+                    return Response({"error": "الدين لا يمكن أن يكون سالباً"}, status=status.HTTP_400_BAD_REQUEST)
+
                     new_debt = 0
 
                 debts.update_one(
