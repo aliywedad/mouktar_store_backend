@@ -2147,12 +2147,20 @@ def confirmeFacteur(request):
         total = int(facteur.get("total", 0))
         remaining_amount = total - payed_price
 
+        if remaining_amount == 0:
+            facteurs.update_one(
+                {"_id": ObjectId(facteur_id)},
+                {"$set": {"send": True}}
+            )
+            return Response({"message": "تم دفع الفاتورة بالكامل مسبقًا"}, status=status.HTTP_200_OK)
+
         if remaining_amount <= 0:
             facteurs.update_one(
                 {"_id": ObjectId(facteur_id)},
                 {"$set": {"send": True}}
             )
             return Response({"message": "تم دفع الفاتورة بالكامل مسبقًا"}, status=status.HTTP_200_OK)
+
 
         # 2️⃣ تحديث الدين للعميل
         debt = debts.find_one({"tel": tel})
