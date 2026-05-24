@@ -2155,6 +2155,34 @@ def confirmeFacteur(request):
             return Response({"message": "تم دفع الفاتورة بالكامل مسبقًا"}, status=status.HTTP_200_OK)
 
         if remaining_amount <= 0:
+            # overpayment: payed_price > total  →  surplus = -remaining_amount
+            now_ts = int(datetime.now().timestamp() * 1000)
+            overpayment = -remaining_amount  # positive surplus amount
+
+            if overpayment > 0:
+                debt = debts.find_one({"tel": tel})
+                if debt:
+                    current_debt = debt["debt"]
+                    # only pay up to what is actually owed
+                    payment_amount = min(overpayment, current_debt)
+
+                    if payment_amount > 0:
+                        new_debt = current_debt - payment_amount
+                        debts.update_one(
+                            {"_id": debt["_id"]},
+                            {"$set": {"debt": new_debt, "timestamp": now_ts}}
+                        )
+                        payments.insert_one({
+                            "note": f"تم دفع مبلغ {payment_amount} من فائض الفاتورة",
+                            "amount": payment_amount,
+                            "wallet": "",
+                            "facteur": facteur_id,
+                            "tel": tel,
+                            "debt": str(debt["_id"]),
+                            "type": "payment",
+                            "timestamp": now_ts
+                        })
+
             facteurs.update_one(
                 {"_id": ObjectId(facteur_id)},
                 {"$set": {"send": True}}
