@@ -2154,7 +2154,7 @@ def confirmeFacteur(request):
             )
             return Response({"message": "تم دفع الفاتورة بالكامل مسبقًا"}, status=status.HTTP_200_OK)
 
-        if remaining_amount <= 0:
+        if remaining_amount < 0:
             # overpayment: payed_price > total  →  surplus = -remaining_amount
             now_ts = int(datetime.now().timestamp() * 1000)
             overpayment = -remaining_amount  # positive surplus amount
