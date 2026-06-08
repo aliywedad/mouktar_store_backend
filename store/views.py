@@ -2191,6 +2191,7 @@ def confirmeFacteur(request):
 
 
         # 2️⃣ تحديث الدين للعميل
+        facteur_ts = facteur.get("timestamp", int(datetime.now().timestamp() * 1000))
         debt = debts.find_one({"tel": tel})
 
         payment_record = {
@@ -2200,7 +2201,7 @@ def confirmeFacteur(request):
             "tel": tel,
             "facteur": facteur_id,
             "type": "debt",
-            "timestamp": int(datetime.now().timestamp() * 1000)
+            "timestamp": facteur_ts
         }
 
         if debt:
@@ -2209,7 +2210,7 @@ def confirmeFacteur(request):
                 {"_id": debt["_id"]},
                 {
                     "$inc": {"debt": remaining_amount},
-                    "$set": {"timestamp": int(datetime.now().timestamp() * 1000)}
+                    "$set": {"timestamp": facteur_ts}
                 }
             )
             payment_record["debt"] = str(debt["_id"])
@@ -2220,7 +2221,7 @@ def confirmeFacteur(request):
                 "tel": tel,
                 "debt": remaining_amount,
                 "name": name,
-                "timestamp": int(datetime.now().timestamp() * 1000)
+                "timestamp": facteur_ts
             })
             payment_record["debt"] = str(newdebt.inserted_id)
             payments.insert_one(payment_record)
@@ -2239,6 +2240,8 @@ def confirmeFacteur(request):
         return Response({"error": f"حدث خطأ: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
     
+
+
 @api_view(["GET"])
 
 def export_json(request):
